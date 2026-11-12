@@ -104,7 +104,8 @@ pub fn on_activate(app: &adw::Application) {
     sidebar.set_margin_bottom(8);
     sidebar.set_margin_start(6);
     sidebar.set_margin_end(0);
-    let categories = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    let categories = gtk::ListBox::new();
+    categories.add_css_class("boxed-list");
     categories.set_margin_start(6);
     categories.set_margin_end(6);
     sidebar.append(&categories);
@@ -128,11 +129,15 @@ pub fn on_activate(app: &adw::Application) {
     let scroller = gtk::ScrolledWindow::new();
     scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
     scroller.set_vexpand(true);
+    // Without this the list asks for the width of its longest row, and the
+    // detail pane is squeezed into a sliver.
+    scroller.set_propagate_natural_width(false);
     scroller.set_child(Some(&list_box));
     middle.append(&scroller);
 
     // The detail.
     let detail = gtk::Box::new(gtk::Orientation::Vertical, 14);
+    detail.set_size_request(320, -1);
     detail.set_margin_top(16);
     detail.set_margin_bottom(16);
     detail.set_margin_start(16);
@@ -140,6 +145,7 @@ pub fn on_activate(app: &adw::Application) {
     let detail_scroller = gtk::ScrolledWindow::new();
     detail_scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
     detail_scroller.set_vexpand(true);
+    detail_scroller.set_propagate_natural_width(false);
     detail_scroller.set_child(Some(&detail));
 
     body.append(&sidebar);
@@ -237,7 +243,7 @@ pub fn on_activate(app: &adw::Application) {
 
 /// Draw the category cards.
 fn rebuild_categories(
-    grid: &gtk::Box,
+    grid: &gtk::ListBox,
     state: &Rc<AppState>,
     title: &gtk::Label,
     rebuild_list: &Rc<dyn Fn()>,
@@ -249,7 +255,7 @@ fn rebuild_categories(
     for (index, category) in Category::all().iter().enumerate() {
         let count = state.count(category);
         let card = category_card(category, count, category == &current);
-        card.connect_clicked({
+        card.connect_activated({
             let state = state.clone();
             let category = category.clone();
             let grid = grid.clone();
@@ -460,36 +466,20 @@ fn paint(widget: &impl IsA<gtk::Widget>, fg: &str, bg: &str) {
 }
 
 /// A category card: an icon, a name and a count.
-fn category_card(category: &Category, count: usize, selected: bool) -> gtk::Button {
-    let button = gtk::Button::new();
-    button.add_css_class("card");
-    button.set_hexpand(true);
-    // The card's own colours, so the theme's button styling cannot override them -
-    // and so the hover state is ours too.
-    let provider = gtk::CssProvider::new();
-    provider.load_from_data(
-        "button.card { background-color: rgba(127, 127, 127, 0.13); }\
-         button.card:hover { background-color: rgba(127, 127, 127, 0.24); }\
-         button.card:active { background-color: rgba(127, 127, 127, 0.32); }",
-    );
-    button
-        .style_context()
-        .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-    let box_ = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+fn category_card(category: &Category, count: usize, selected: bool) -> adw::ActionRow {
+    let row = adw::ActionRow::builder()
+        .title(category.title())
+        .activatable(true)
+        .build();
     let icon = gtk::Image::from_icon_name(category.icon());
-    box_.append(&icon);
-    let label = gtk::Label::new(Some(category.title()));
-    label.set_xalign(0.0);
-    label.set_hexpand(true);
-    box_.append(&label);
+    row.add_prefix(&icon);
     let count_label = gtk::Label::new(Some(&count.to_string()));
     count_label.add_css_class("count");
-    box_.append(&count_label);
-    button.set_child(Some(&box_));
+    row.add_suffix(&count_label);
     if selected {
-        button.add_css_class("selected");
+        row.add_css_class("selected");
     }
-    button
+    row
 }
 
 /// The first letter of a site's name.

@@ -31,14 +31,14 @@ use serde_json::{json, Value};
 const MAX_MESSAGE_BYTES: usize = 8 * 1024 * 1024;
 
 fn main() {
-    let credentials = vault::load().unwrap_or_default();
+    let mut credentials = vault::load().unwrap_or_default();
     let aliases = load_aliases();
 
     loop {
         let Some(request) = read_message() else {
             return;
         };
-        let response = handle(&request, &credentials, &aliases);
+        let response = handle(&request, &mut credentials, &aliases);
         if write_message(&response).is_err() {
             return;
         }
@@ -71,7 +71,7 @@ fn write_message(message: &Value) -> std::io::Result<()> {
 }
 
 /// Answer a request.
-fn handle(request: &Value, credentials: &[Credential], aliases: &[Value]) -> Value {
+fn handle(request: &Value, credentials: &mut Vec<Credential>, aliases: &[Value]) -> Value {
     let cmd = request.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
     match cmd {
         "ping" => json!({"ok": true, "count": credentials.len()}),
@@ -114,15 +114,15 @@ fn handle(request: &Value, credentials: &[Credential], aliases: &[Value]) -> Val
                 .clamp(1, 10) as usize;
             json!({"ok": true, "passwords": icp_core::write::suggest_passwords(count)})
         }
-        "save" => save(request),
-        "update" => update(request),
+        "save" => save(request, credentials),
+        "update" => update(request, credentials),
         "delete" => delete(request),
         other => json!({"ok": false, "error": format!("unknown cmd {other}")}),
     }
 }
 
 /// Write a new login into the keychain.
-fn save(request: &Value) -> Value {
+fn save(request: &Value, credentials: &mut Vec<Credential>) -> Value {
     let domain = request.get("domain").and_then(|v| v.as_str()).unwrap_or("");
     let username = request
         .get("username")
@@ -142,7 +142,18 @@ fn save(request: &Value) -> Value {
     match Engine::open(None) {
         Ok(mut engine) => {
             match engine.add_password(domain, username, password, None, notes, "Passwords") {
-                Ok(outcome) => json!({"ok": true, "record_name": outcome.record_name}),
+                Ok(outcome) => {
+                    // The extension reads the vault, so the new login goes in there
+                    // too - otherwise it would not show up until the next sync.
+                    remember(
+                        credentials,
+                        domain,
+                        username,
+                        password,
+                        outcome.record_name.clone(),
+                    );
+                    json!({"ok": true, "record_name": outcome.record_name})
+                }
                 Err(e) => json!({"ok": false, "error": e.to_string()}),
             }
         }
@@ -151,7 +162,7 @@ fn save(request: &Value) -> Value {
 }
 
 /// Change a password that is already in the keychain.
-fn update(request: &Value) -> Value {
+fn update(request: &Value, credentials: &mut [Credential]) -> Value {
     let record = request.get("record").and_then(|v| v.as_str()).unwrap_or("");
     let password = request
         .get("password")
@@ -162,7 +173,15 @@ fn update(request: &Value) -> Value {
     }
     match Engine::open(None) {
         Ok(mut engine) => match engine.update_password(record, password, None, None, "Passwords") {
-            Ok(outcome) => json!({"ok": true, "record_name": outcome.record_name}),
+            Ok(outcome) => {
+                for c in credentials.iter_mut() {
+                    if c.record_name == record {
+                        c.password = password.to_string();
+                    }
+                }
+                let _ = vault::save(credentials);
+                json!({"ok": true, "record_name": outcome.record_name})
+            }
             Err(e) => json!({"ok": false, "error": e.to_string()}),
         },
         Err(e) => json!({"ok": false, "error": e.to_string()}),
@@ -182,6 +201,41 @@ fn delete(request: &Value) -> Value {
         },
         Err(e) => json!({"ok": false, "error": e.to_string()}),
     }
+}
+
+/// Put a login into the vault, so the extension sees it right away.
+fn remember(
+    credentials: &mut Vec<Credential>,
+    domain: &str,
+    username: &str,
+    password: &str,
+    record: String,
+) {
+    let mut credential = Credential {
+        domain: domain.to_string(),
+        username: username.to_string(),
+        password: password.to_string(),
+        title: format!("{domain} ({username})"),
+        record_name: record,
+        ..Default::default()
+    };
+    credential.mdat = now();
+    if let Some(existing) = credentials.iter_mut().find(|c| {
+        c.domain.eq_ignore_ascii_case(domain) && c.username.eq_ignore_ascii_case(username)
+    }) {
+        *existing = credential;
+    } else {
+        credentials.push(credential);
+    }
+    let _ = vault::save(credentials);
+}
+
+/// The current time, in unix seconds.
+fn now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
 }
 
 /// A credential, as the extension sees it.

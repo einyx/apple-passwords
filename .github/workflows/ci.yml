@@ -38,12 +38,18 @@ jobs:
   flatpak:
     name: flatpak
     runs-on: ubuntu-24.04
-    container:
-      image: ghcr.io/flathub/flatpak-builder:latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak-builder flatpak
       - name: Build the Flatpak
         run: |
+          flatpak install --user -y flathub \
+            org.gnome.Platform//47 \
+            org.gnome.Sdk//47 \
+            org.fre.Sdk.Extension.rust-stable//24.08
           flatpak-builder --user --install --force-clean --disable-roofs-fuse \
             --repo=flatpak-repo packaging/org.icp.passwords.yml
           flatpak build-bundle flatpak-repo build.flatpak org.icp.passwords

@@ -15,6 +15,7 @@ use icp_core::keychain::Credential;
 
 mod add;
 mod ticker;
+mod tray;
 mod window;
 
 /// How long a copied secret stays on the clipboard.

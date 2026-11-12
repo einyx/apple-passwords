@@ -284,10 +284,49 @@ pub fn on_activate(app: &adw::Application) {
         glib::ControlFlow::Continue
     });
 
+    // The tray icon: the app in the top bar, so it is one click away.
+    // ICP_NO_TRAY runs the app without the icon, for a desktop that has no
+    // tray at all.
+    let tray = if std::env::var("ICP_NO_TRAY").is_ok() {
+        None
+    } else {
+        crate::tray::start()
+    };
+    let has_tray = tray.is_some();
+    if let Some(commands) = tray {
+        let window = window.clone();
+        let state = state.clone();
+        glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
+            while let Ok(command) = commands.try_recv() {
+                match command {
+                    crate::tray::Command::Show => {
+                        window.present();
+                    }
+                    crate::tray::Command::Sync => {
+                        sync(&window, state.clone());
+                    }
+                    crate::tray::Command::Quit => {
+                        if let Some(app) = window.application() {
+                            app.quit();
+                        }
+                    }
+                }
+            }
+            glib::ControlFlow::Continue
+        });
+    }
+
+    // Closing the window hides it: the tray icon is the app's home now. With
+    // no tray there would be no way back to it, so the app leaves instead.
     let state2 = state.clone();
-    window.connect_close_request(move |_| {
+    window.connect_close_request(move |w| {
         state2.load();
-        glib::Propagation::Proceed
+        if has_tray {
+            w.set_visible(false);
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
     });
 
     window.present();

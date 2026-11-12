@@ -53,17 +53,19 @@ jobs:
       - name: The .rpm
         run: |
           version="${GITHUB_REF_NAME#v}"
-          mkdir -p ~/rpmbuild/SOURCES ~/rpmbuild/SPECS ~/rpmbuild/BUILD ~/rpmbuild/RPMS
+          # An absolute _topdir: rpmbuild does not expand a tilde in it.
+          topdir="$PWD/rpmbuild"
+          mkdir -p "$topdir"/SOURCES "$topdir"/SPECS "$topdir"/BUILD "$topdir"/RPMS
           # git archive, so the tarball holds the sources and not the build tree.
           git archive --format=tar.gz --prefix="apple-passwords-${version}/" \
-            -o ~/rpmbuild/SOURCES/apple-passwords-${version}.tar.gz HEAD
-          cp packaging/apple-passwords.spec ~/rpmbuild/SPECS/
+            -o "$topdir/SOURCES/apple-passwords-${version}.tar.gz" HEAD
+          cp packaging/apple-passwords.spec "$topdir/SPECS/"
           # --nodeps: the build requirements are the apt packages above; rpm on
           # Ubuntu does not know their RPM names.
-          rpmbuild --nodeps --define "_topdir ~/rpmbuild" --define "_version $version" \
+          rpmbuild --nodeps --define "_topdir $topdir" --define "_version $version" \
             --define "_arch ${{ matrix.rpm-arch }}" \
-            -bb ~/rpmbuild/SPECS/apple-passwords.spec
-          find ~/rpmbuild/RPMS -name '*.rpm' -exec cp {} . \;
+            -bb "$topdir/SPECS/apple-passwords.spec"
+          find "$topdir/RPMS" -name '*.rpm' -exec cp {} . \;
       - name: The binaries
         run: |
           version="${GITHUB_REF_NAME#v}"

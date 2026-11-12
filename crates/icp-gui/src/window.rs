@@ -24,16 +24,11 @@ const SITE_COLOURS: [(&str, &str); 8] = [
 
 /// The app's CSS.
 const CSS: &str = "
-@define-color sidebar_bg rgba(127, 127, 127, 0.07);
-@define-color card_bg rgba(127, 127, 127, 0.13);
-@define-color card_bg_hover rgba(127, 127, 127, 0.22);
-.sidebar { background: @sidebar_bg; }
+.sidebar { background-color: rgba(127, 127, 127, 0.07); }
 .card {
-  background: @card_bg;
   border-radius: 12px;
   padding: 8px 10px;
 }
-.card:hover { background: @card_bg_hover; }
 .card .count { font-size: 11px; opacity: 0.55; }
 .site-logo {
   border-radius: 10px;
@@ -455,7 +450,9 @@ fn confirm_delete(
 /// Give a widget its own colours.
 fn paint(widget: &impl IsA<gtk::Widget>, fg: &str, bg: &str) {
     let provider = gtk::CssProvider::new();
-    provider.load_from_data(&format!("background-color: {bg}; color: {fg};"));
+    // A rule, not a bare declaration: GTK's parser reads a stylesheet, so
+    // "background-color: #fff" on its own would be read as a selector.
+    provider.load_from_data(&format!("* {{ background-color: {bg}; color: {fg}; }}"));
     widget
         .style_context()
         .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -466,6 +463,17 @@ fn category_card(category: &Category, count: usize, selected: bool) -> gtk::Butt
     let button = gtk::Button::new();
     button.add_css_class("card");
     button.set_hexpand(true);
+    // The card's own colours, so the theme's button styling cannot override them -
+    // and so the hover state is ours too.
+    let provider = gtk::CssProvider::new();
+    provider.load_from_data(
+        "button.card { background-color: rgba(127, 127, 127, 0.13); }\
+         button.card:hover { background-color: rgba(127, 127, 127, 0.24); }\
+         button.card:active { background-color: rgba(127, 127, 127, 0.32); }",
+    );
+    button
+        .style_context()
+        .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
     let box_ = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let icon = gtk::Image::from_icon_name(category.icon());
     box_.append(&icon);

@@ -288,7 +288,6 @@ mod tests {
 
         let mut b_bytes = [0u8; 256];
         rand::thread_rng().fill_bytes(&mut b_bytes);
-        b_bytes[0] |= 0x80;
         let b_public = (&k * &v + &g.modpow(&x, &n)) % &n; // B = k*v + g^x
 
         client

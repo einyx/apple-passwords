@@ -20,7 +20,10 @@ sha1 = "0.10"
 sha2 = "0.10"
 hmac = "0.12"
 rand = "0.8"
-reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "rustls-tls", "blocking"] }
+# The system trust store, not a bundled one: Apple's certificates chain to a
+# root that the bundled list does not have, and a corporate proxy's CA is
+# only in the system store.
+reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "rustls-tls-native-roots", "blocking"] }
 flate2 = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 url = "2"

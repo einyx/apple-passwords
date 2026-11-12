@@ -6,6 +6,7 @@
 //! the two are checked against each other.
 
 pub mod anisette;
+pub mod apple_tls;
 pub mod ckks;
 pub mod cloudkit;
 pub mod crypto;
@@ -16,6 +17,7 @@ pub mod error;
 pub mod gsa;
 pub mod icloud;
 pub mod keychain;
+pub mod login;
 pub mod nska;
 pub mod octagon;
 pub mod proto;

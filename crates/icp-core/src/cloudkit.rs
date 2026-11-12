@@ -181,13 +181,7 @@ pub struct CloudKitTransport {
 impl CloudKitTransport {
     /// Build a transport.
     pub fn new(ck_token: &str, user_id: &str, device: DeviceConfig) -> Result<CloudKitTransport> {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|e| Error::Network {
-                url: CKCODE_INVOKE_URL.to_string(),
-                source: e,
-            })?;
+        let client = crate::apple_tls::client(Duration::from_secs(30))?;
         Ok(CloudKitTransport {
             ck_token: ck_token.to_string(),
             user_id: user_id.to_string(),

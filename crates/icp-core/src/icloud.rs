@@ -101,10 +101,7 @@ pub fn login_delegates(
         ),
     );
 
-    let http = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| Error::Apple(format!("could not build the iCloud client: {e}")))?;
+    let http = crate::apple_tls::client(std::time::Duration::from_secs(30))?;
     let response = http
         .post(LOGIN_DELEGATES_URL)
         .headers(crate::header_map(headers))
@@ -201,10 +198,7 @@ pub fn fetch_account_settings(
         crate::anisette::service_client_info(anisette, ICLOUD_SERVICE_IDENTITY)?,
     );
 
-    let http = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| Error::Apple(format!("could not build the iCloud client: {e}")))?;
+    let http = crate::apple_tls::client(std::time::Duration::from_secs(30))?;
     let response = http
         .post(ACCOUNT_SETTINGS_URL)
         .headers(crate::header_map(headers))
@@ -294,10 +288,7 @@ pub fn ck_app_init(
         crate::anisette::service_client_info(anisette, ICLOUD_SERVICE_IDENTITY)?,
     );
 
-    let http = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| Error::Apple(format!("could not build the iCloud client: {e}")))?;
+    let http = crate::apple_tls::client(std::time::Duration::from_secs(30))?;
     let response = http
         .post(format!("{CK_APP_INIT_URL}?container={container}"))
         .headers(crate::header_map(headers))

@@ -23,6 +23,11 @@ const CLIPBOARD_TTL: u32 = 20;
 fn main() -> gtk::glib::ExitCode {
     // libadwaita has to be initialised before any of its widgets exist.
     adw::init().expect("libadwaita");
+    // On Wayland the window's app id - the one the desktop uses to find the
+    // application's icon and its desktop entry - comes from the program name.
+    // Without this the dock shows no icon, because it would look for
+    // "icp-gui.desktop" rather than the one that is installed.
+    glib::set_prgname(Some("org.icp.passwords"));
 
     let app = adw::Application::builder()
         .application_id("org.icp.passwords")

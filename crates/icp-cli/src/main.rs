@@ -16,6 +16,7 @@ fn main() {
         "dump" => cmd_dump(),
         "update" => cmd_update(&args),
         "delete" => cmd_delete(&args),
+        "login" => cmd_login(&args),
         _ => {
             usage();
             Ok(())
@@ -94,6 +95,89 @@ fn cmd_dump() -> Result<(), String> {
     for l in lines {
         println!("{l}");
     }
+    Ok(())
+}
+
+fn cmd_login(_args: &[String]) -> Result<(), String> {
+    use icp_core::login::{ask, ask_secret, sign_in};
+    use icp_core::{anisette::Anisette, device::Device};
+
+    let device = Device::load_or_create().map_err(|e| e.to_string())?;
+    let url =
+        std::env::var("ICP_ANISETTE_URL").unwrap_or_else(|_| "http://127.0.0.1:6969".to_string());
+    let mut anisette = Anisette::new(&url).map_err(|e| e.to_string())?;
+
+    let username = ask("Apple ID: ");
+    if username.is_empty() {
+        return Err("no Apple ID given".into());
+    }
+    let password = ask_secret("Password: ");
+    if password.is_empty() {
+        return Err("no password given".into());
+    }
+
+    let mut twofa = |kind: &str| -> Result<String, icp_core::Error> {
+        let where_ = if kind == "sms" {
+            "your phone by SMS"
+        } else {
+            "your trusted devices"
+        };
+        println!("Apple sent a code to {where_}.");
+        let code = ask("6-digit code: ");
+        if code.is_empty() {
+            return Err(icp_core::Error::Apple("no code given".into()));
+        }
+        Ok(code)
+    };
+
+    let login = sign_in(&username, &password, &mut anisette, &device, &mut twofa)
+        .map_err(|e| e.to_string())?;
+
+    // The session: the tokens, the device identity and (optionally) the password.
+    let mut record = icp_core::session::load()
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
+    if !record.is_object() {
+        record = serde_json::Value::Object(Default::default());
+    }
+    let object = record.as_object_mut().unwrap();
+    object.insert(
+        "username".into(),
+        serde_json::Value::String(username.clone()),
+    );
+    object.insert("dsid".into(), serde_json::Value::String(login.dsid.clone()));
+    object.insert(
+        "dsid_numeric".into(),
+        serde_json::Value::String(login.dsid.clone()),
+    );
+    let mut mme = serde_json::Map::new();
+    mme.insert("dsid".into(), serde_json::Value::String(login.dsid.clone()));
+    mme.insert(
+        "mmeAuthToken".into(),
+        serde_json::Value::String(login.mme_auth_token.clone()),
+    );
+    mme.insert(
+        "cloudKitUserId".into(),
+        serde_json::Value::String(login.cloudkit_user_id.clone()),
+    );
+    let mut tokens = serde_json::Map::new();
+    tokens.insert(
+        "cloudKitToken".into(),
+        serde_json::Value::String(login.cloudkit_token.clone()),
+    );
+    mme.insert("tokens".into(), serde_json::Value::Object(tokens));
+    object.insert("mme".into(), serde_json::Value::Object(mme));
+    let mut ws = serde_json::Map::new();
+    for (name, url) in &login.webservices {
+        if !url.is_empty() {
+            ws.insert(name.clone(), serde_json::Value::String(url.clone()));
+        }
+    }
+    object.insert("webservices".into(), serde_json::Value::Object(ws));
+
+    icp_core::session::save(&record).map_err(|e| e.to_string())?;
+    println!("Signed in as {username}.");
+    println!("The keychain trust still has to be joined - run `icp login` again for that.");
     Ok(())
 }
 

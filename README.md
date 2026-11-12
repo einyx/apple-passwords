@@ -7,7 +7,8 @@ into the browser, and can add new ones *to the real keychain*, so they reach you
 Apple devices.
 
 The protocol was reverse-engineered from the wire; the findings are written up in
-[RUST-NOTES.md](RUST-NOTES.md).
+[RUST-NOTES.md](RUST-NOTES.md), and the original research notes - the byte-level
+pins of Apple's formats - are in [docs/research.md](docs/research.md).
 
 ## Status
 

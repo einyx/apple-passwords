@@ -1,5 +1,8 @@
+# The release carries the binaries, not their debug symbols.
+%global debug_package %{nil}
+
 Name:           apple-passwords
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Apple Passwords - your iCloud Keychain on Linux
 
@@ -55,5 +58,7 @@ cargo test --release --locked
 %{_datadir}/doc/%{name}/LICENSE
 
 %changelog
+* Thu Nov 12 2026 einyx <einyx@users.noreply.github.com> - 0.1.1-1
+- The shared password groups, and the Hide My Email aliases.
 * Thu Nov 12 2026 einyx <einyx@users.noreply.github.com> - 0.1.0-1
 - First release: read the iCloud Keychain, and write to it.

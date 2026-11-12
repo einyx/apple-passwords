@@ -59,10 +59,13 @@ jobs:
           # git archive, so the tarball holds the sources and not the build tree.
           git archive --format=tar.gz --prefix="apple-passwords-${version}/" \
             -o "$topdir/SOURCES/apple-passwords-${version}.tar.gz" HEAD
-          cp packaging/apple-passwords.spec "$topdir/SPECS/"
+          # The spec's own Version: the tag's version, so the tarball and the
+          # package agree.
+          sed "s/^Version:.*/Version:        ${version}/" \
+            packaging/apple-passwords.spec > "$topdir/SPECS/apple-passwords.spec"
           # --nodeps: the build requirements are the apt packages above; rpm on
           # Ubuntu does not know their RPM names.
-          rpmbuild --nodeps --define "_topdir $topdir" --define "_version $version" \
+          rpmbuild --nodeps --define "_topdir $topdir" \
             --define "_arch ${{ matrix.rpm-arch }}" \
             -bb "$topdir/SPECS/apple-passwords.spec"
           find "$topdir/RPMS" -name '*.rpm' -exec cp {} . \;

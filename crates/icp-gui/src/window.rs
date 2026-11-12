@@ -136,7 +136,7 @@ pub fn on_activate(app: &adw::Application) {
     // The category sidebar.
     let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 6);
     sidebar.add_css_class("sidebar");
-    sidebar.set_size_request(186, -1);
+    sidebar.set_size_request(210, -1);
     sidebar.set_margin_top(8);
     sidebar.set_margin_bottom(8);
     sidebar.set_margin_start(6);
@@ -295,23 +295,33 @@ pub fn on_activate(app: &adw::Application) {
     // A debug hook: render the window - and the add dialog - to PNGs, and quit.
     if let Ok(path) = std::env::var("ICP_SCREENSHOT") {
         let state = state.clone();
-        glib::timeout_add_local_once(std::time::Duration::from_millis(1200), move || {
-            let surface = window
-                .clone()
-                .native()
-                .and_then(|n| n.surface())
-                .expect("the window has a surface");
-            let renderer = gtk::gsk::Renderer::for_surface(&surface).expect("a renderer");
-            if let Err(e) = save_png(&window, &path, &renderer) {
-                eprintln!("the screenshot failed: {e}");
-            }
-            let dialog = crate::add::open(&window, state, None);
-            let dialog_path = path.replace(".png", "-add.png");
-            glib::timeout_add_local_once(std::time::Duration::from_millis(800), move || {
-                if let Err(e) = save_png(&dialog, &dialog_path, &renderer) {
-                    eprintln!("the dialog screenshot failed: {e}");
+        let list_box = list_box.clone();
+        let window = window.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {
+            // The first login, so the detail pane is in the picture too.
+            if let Some(row) = list_box.first_child() {
+                if let Some(row) = row.downcast_ref::<gtk::ListBoxRow>() {
+                    row.activate();
                 }
-                std::process::exit(0);
+            }
+            glib::timeout_add_local_once(std::time::Duration::from_millis(700), move || {
+                let surface = window
+                    .clone()
+                    .native()
+                    .and_then(|n| n.surface())
+                    .expect("the window has a surface");
+                let renderer = gtk::gsk::Renderer::for_surface(&surface).expect("a renderer");
+                if let Err(e) = save_png(&window, &path, &renderer) {
+                    eprintln!("the screenshot failed: {e}");
+                }
+                let dialog = crate::add::open(&window, state, None);
+                let dialog_path = path.replace(".png", "-add.png");
+                glib::timeout_add_local_once(std::time::Duration::from_millis(800), move || {
+                    if let Err(e) = save_png(&dialog, &dialog_path, &renderer) {
+                        eprintln!("the dialog screenshot failed: {e}");
+                    }
+                    std::process::exit(0);
+                });
             });
         });
     }
@@ -565,6 +575,8 @@ fn category_card(category: &Category, count: usize, selected: bool) -> adw::Acti
         .activatable(true)
         .build();
     row.add_css_class("card");
+    // One line: the name ellipsizes rather than wrapping.
+    row.set_title_lines(1);
     let icon = gtk::Image::from_icon_name(category.icon());
     row.add_prefix(&icon);
     let count_label = gtk::Label::new(Some(&count.to_string()));
@@ -816,28 +828,48 @@ fn masked(password: &str) -> String {
     }
 }
 
-/// "Last modified today at 9:41 AM".
+/// "Last modified today at 9:41 AM", or "Last modified on 4 May 2026".
 fn modified(when: f64) -> String {
     if when <= 0.0 {
         return String::new();
     }
     let secs = when as i64;
-    let day: i64 = secs / 86400;
+    let day: i64 = secs.div_euclid(86400);
     let today = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| (d.as_secs() / 86400) as i64)
         .unwrap_or(0);
-    let time_of_day = secs % 86400;
+    let time_of_day = secs.rem_euclid(86400);
     let (h, m) = (time_of_day / 3600, (time_of_day % 3600) / 60);
     let (pm, hour12) = (h >= 12, h % 12);
     let hour12 = if hour12 == 0 { 12 } else { hour12 };
-    let when_text = if day == today {
-        format!("today at {hour12}:{m:02} {}", if pm { "PM" } else { "AM" })
-    } else {
-        format!("{day}")
+    let clock = format!("{hour12}:{m:02} {}", if pm { "PM" } else { "AM" });
+    let when_text = match day - today {
+        0 => format!("today at {clock}"),
+        -1 => format!("yesterday at {clock}"),
+        _ => {
+            let (year, month, day) = icp_core::civil_from_days(day);
+            format!("on {} {} {}", day, MONTHS[(month - 1) as usize], year)
+        }
     };
     format!("Last modified {when_text}")
 }
+
+/// The month names, for the dates.
+const MONTHS: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
 
 /// A crude password strength: length, character classes, and how many of them.
 fn strength(password: &str) -> (String, f64, &'static str) {

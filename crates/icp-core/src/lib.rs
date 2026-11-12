@@ -88,8 +88,9 @@ pub fn now_rfc3339() -> String {
     )
 }
 
-/// The calendar date from the days since the Unix epoch.
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
+/// The calendar date from the days since the Unix epoch: the year, the month
+/// and the day.
+pub fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = (z - era * 146097) as u64;

@@ -276,15 +276,14 @@ impl Engine {
 
     /// Change a password that is already in the keychain.
     ///
-    /// The record is fetched first: an update has to present the version tag it
-    /// read, so a stale write is refused rather than silently overwriting someone
-    /// else's change.
+    /// The record is fetched and decrypted first: the update keeps the login as it
+    /// is (site, account, label, notes) and changes only the secret and the
+    /// modification time. It also presents the version tag it read, so a stale
+    /// write is refused rather than silently overwriting someone else's change.
     pub fn update_password(
         &mut self,
         record_name: &str,
         new_password: &str,
-        domain: &str,
-        username: &str,
         title: Option<&str>,
         notes: Option<&str>,
         zone: &str,
@@ -302,27 +301,36 @@ impl Engine {
             .get_str("uploadver")
             .map(|s| s.to_string())
             .unwrap_or_else(write::default_uploadver);
-        // The parent key the item hangs under - the fetched record knows it.
-        let parent = existing
-            .get_str("parentkeyref")
-            .unwrap_or(class_key_id.as_str())
-            .to_string();
 
-        let item = write::build_internet_password_item(
-            domain,
-            username,
-            new_password,
-            title,
-            notes,
-            None,
-            "",
-            0,
-            now_unix(),
-        );
+        // Decrypt the item as it is, so the update keeps everything but the secret.
+        let class_keys = vec![(class_key_id.clone(), class_key.clone())];
+        let items = crate::keychain::decrypt_items(std::slice::from_ref(&existing), &class_keys);
+        let mut item = items
+            .into_iter()
+            .next()
+            .map(|(_, value)| value)
+            .ok_or_else(|| Error::Apple("that login could not be decrypted".into()))?;
+        {
+            let dict = item
+                .as_dictionary_mut()
+                .ok_or_else(|| Error::Apple("that login is not a readable item".into()))?;
+            dict.insert(
+                "v_Data".into(),
+                plist::Value::Data(new_password.as_bytes().to_vec()),
+            );
+            dict.insert("mdat".into(), plist::Value::Date(write::date_from_unix(now_unix())));
+            if let Some(title) = title {
+                dict.insert("labl".into(), plist::Value::String(title.into()));
+            }
+            if let Some(notes) = notes {
+                dict.insert("icmt".into(), plist::Value::String(notes.into()));
+            }
+        }
+
         let built = write::build_item_record(
             &item,
             &class_key,
-            &parent,
+            &class_key_id,
             zone,
             &user_id,
             Some(record_name),
@@ -353,7 +361,7 @@ impl Engine {
             .ok_or_else(|| {
                 Error::Apple("the write could not be read back - not confirmed".into())
             })?;
-        if !write::verify_saved_record(&fetched, &class_key, new_password, Some(username)) {
+        if !write::verify_saved_record(&fetched, &class_key, new_password, None) {
             return Err(Error::Apple(
                 "the write could not be read back - not confirmed".into(),
             ));

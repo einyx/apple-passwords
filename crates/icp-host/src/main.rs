@@ -155,17 +155,7 @@ fn update(request: &Value) -> Value {
     }
     match Engine::open(None) {
         Ok(mut engine) => {
-            let domain = request.get("domain").and_then(|v| v.as_str()).unwrap_or("");
-            let username = request.get("username").and_then(|v| v.as_str()).unwrap_or("");
-            match engine.update_password(
-                record,
-                password,
-                domain,
-                username,
-                None,
-                None,
-                "Passwords",
-            ) {
+            match engine.update_password(record, password, None, None, "Passwords") {
                 Ok(outcome) => json!({"ok": true, "record_name": outcome.record_name}),
                 Err(e) => json!({"ok": false, "error": e.to_string()}),
             }

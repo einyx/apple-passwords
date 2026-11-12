@@ -233,8 +233,6 @@ fn save_clicked(
                         .update_password(
                             &credential.record_name,
                             &password,
-                            &domain,
-                            account.trim(),
                             None,
                             notes,
                             "Passwords",

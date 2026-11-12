@@ -102,7 +102,7 @@ pub fn build_internet_password_item(
     plist::Value::Dictionary(d)
 }
 
-fn date_from_unix(unix: f64) -> plist::Date {
+pub fn date_from_unix(unix: f64) -> plist::Date {
     let secs = unix as u64;
     let nanos = ((unix - secs as f64) * 1e9) as u32;
     let time = UNIX_EPOCH + std::time::Duration::new(secs, nanos);

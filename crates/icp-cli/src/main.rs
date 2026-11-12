@@ -102,7 +102,7 @@ fn cmd_update(args: &[String]) -> Result<(), String> {
     let password = args.get(3).cloned().ok_or("no password given")?;
     let mut engine = open()?;
     let outcome = engine
-        .update_password(&record, &password, "", "", None, None, "Passwords")
+        .update_password(&record, &password, None, None, "Passwords")
         .map_err(|e| e.to_string())?;
     println!("updated (record {})", outcome.record_name);
     Ok(())

@@ -38,12 +38,20 @@ fn usage() {
     println!(
         "usage: icp <command>
 
-  sync            fetch the keychain and decrypt it into the vault
+  login           sign in to iCloud and join the keychain trust
+  join            join the keychain trust (the escrow recovery)
+  sync            fetch the keychain and the shared groups into the vault
   show [query]    list the credentials in the vault
   groups          the shared password groups
   aliases         the Hide My Email aliases
-  add <domain>    add a login to the iCloud Keychain
-  check           report what the client can see (no secrets)
+  add <domain> <user> <password>
+                  add a login to the iCloud Keychain
+  update <record> <password>
+                  change the password of a login
+  delete <record> remove a login from the iCloud Keychain
+  status          what the session holds
+  diag            what the keychain zones hold
+  logout          forget the session
 "
     );
 }

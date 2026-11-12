@@ -40,10 +40,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install flatpak-builder
+      - name: Install flatpak-builder and the build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak-builder flatpak
+          sudo apt-get install -y flatpak-builder flatpak \
+            libgtk-4-dev libadwaita-1-dev libssl-dev pkg-config
       - name: Build the Flatpak
         run: |
           sudo flatpak remote-add --if-not-exists flathub \

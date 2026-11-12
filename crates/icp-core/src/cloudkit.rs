@@ -22,6 +22,8 @@ pub const CKCODE_INVOKE_URL: &str =
     "https://gateway.icloud.com/ckcoderouter/api/client/code/invoke";
 pub const CKDATABASE_SYNC_URL: &str =
     "https://gateway.icloud.com/ckdatabase/api/client/record/sync";
+pub const CKDATABASE_ZONE_SYNC_URL: &str =
+    "https://gateway.icloud.com/ckdatabase/api/client/zone/sync";
 pub const CKDATABASE_SAVE_URL: &str =
     "https://gateway.icloud.com/ckdatabase/api/client/record/save";
 pub const CKDATABASE_DELETE_URL: &str =
@@ -189,6 +191,11 @@ impl CloudKitTransport {
             container: CUTTLEFISH_CONTAINER.to_string(),
             client,
         })
+    }
+
+    /// Point the transport at another container.
+    pub fn set_container(&mut self, container: &str) {
+        self.container = container.to_string();
     }
 
     /// The container headers plus the two CKCode-invoke headers.
@@ -391,6 +398,59 @@ CloudDB/CloudDBClient.desc\"; messageType=RequestOperation; delimited=true"
             }
         }
         Ok(out)
+    }
+
+    /// The zones that changed in a container.
+    pub fn fetch_zone_changes(
+        &self,
+        continuation: Option<&[u8]>,
+        bundle: &str,
+        anisette: &mut Anisette,
+        device: &Device,
+    ) -> Result<Vec<u8>> {
+        let mut writer = Writer::new();
+        writer.bytes(1, continuation);
+        let request = writer.finish();
+        let result = self.perform(
+            CKDATABASE_ZONE_SYNC_URL,
+            203,
+            203,
+            &request,
+            bundle,
+            None,
+            "Private",
+            DB_PRIVATE,
+            None,
+            anisette,
+            device,
+        )?;
+        Ok(result.field(203).unwrap_or_default())
+    }
+
+    /// The records of a zone, by identifier (a raw retrieve-changes request).
+    pub fn fetch_records_with(
+        &self,
+        request: &[u8],
+        bundle: &str,
+        anisette: &mut Anisette,
+        device: &Device,
+    ) -> Result<Vec<u8>> {
+        let result = self.perform(
+            CKDATABASE_SYNC_URL,
+            ckks::OP_TYPE_RECORD_RETRIEVE_CHANGES,
+            ckks::OP_TYPE_RECORD_RETRIEVE_CHANGES,
+            request,
+            bundle,
+            None,
+            "Private",
+            DB_PRIVATE,
+            None,
+            anisette,
+            device,
+        )?;
+        Ok(result
+            .field(ckks::OP_TYPE_RECORD_RETRIEVE_CHANGES)
+            .unwrap_or_default())
     }
 
     /// Save one record.

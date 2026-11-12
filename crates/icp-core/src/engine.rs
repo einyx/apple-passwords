@@ -205,12 +205,101 @@ impl Engine {
 
     /// Fetch the keychain and decrypt it into credentials.
     pub fn sync(&mut self, zones: &[&str]) -> Result<Vec<Credential>> {
+        Ok(keychain::credentials_from_items(&self.sync_items(zones)?))
+    }
+
+    /// Fetch the keychain *and* the shared groups.
+    ///
+    /// The groups are best-effort: a group that cannot be opened is skipped, not
+    /// fatal - the account's own logins still come through.
+    pub fn sync_with_groups(&mut self, zones: &[&str]) -> Result<Vec<Credential>> {
+        let items = self.sync_items(zones)?;
+        let mut creds = keychain::credentials_from_items(&items);
+        match self.fetch_groups(&items) {
+            Ok(groups) => {
+                for group in groups {
+                    let label = group.label();
+                    for mut credential in group.credentials() {
+                        credential.group = label.clone();
+                        creds.push(credential);
+                    }
+                }
+            }
+            Err(e) => eprintln!("the shared groups were skipped: {e}"),
+        }
+        Ok(creds)
+    }
+
+    /// Fetch the keychain and decrypt it into the raw items.
+    ///
+    /// The items are what the shared groups need: the Protected Cloud Storage
+    /// service keys are keychain items of their own.
+    pub fn sync_items(&mut self, zones: &[&str]) -> Result<Vec<(String, plist::Value)>> {
         let (tlks, view_synckeys) = self.fetch_view_keys()?;
         let mut records = self.fetch_zones(zones)?;
         records.extend(view_synckeys);
         let class_keys = keychain::unwrap_class_keys(&records, &tlks);
-        let items = keychain::decrypt_items(&records, &class_keys);
-        Ok(keychain::credentials_from_items(&items))
+        Ok(keychain::decrypt_items(&records, &class_keys))
+    }
+
+    /// The shared groups this account can open.
+    ///
+    /// The groups live in their own CloudKit container, so they need their own
+    /// transport and their own per-container user id.
+    pub fn fetch_groups(
+        &mut self,
+        keychain_items: &[(String, plist::Value)],
+    ) -> Result<Vec<crate::groups::Group>> {
+        let ck_token = self
+            .session
+            .get("mme")
+            .and_then(|m| m.get("tokens"))
+            .and_then(|t| t.get("cloudKitToken"))
+            .and_then(|v| v.as_str())
+            .ok_or(Error::NotSignedIn)?
+            .to_string();
+        let mme_token = self
+            .session
+            .get("mme")
+            .and_then(|m| m.get("mmeAuthToken"))
+            .and_then(|v| v.as_str())
+            .ok_or(Error::NotSignedIn)?
+            .to_string();
+        let user_id = self.sharing_user_id(&mme_token)?;
+        let mut transport = build_transport_for(&ck_token, &user_id, &self.device)?;
+        transport.set_container(crate::groups::KCSHARING_CONTAINER);
+        crate::groups::fetch_groups(
+            &transport,
+            &user_id,
+            &mut self.anisette,
+            &self.device,
+            keychain_items,
+        )
+    }
+
+    /// The per-container user id of the sharing container.
+    fn sharing_user_id(&mut self, mme_token: &str) -> Result<String> {
+        if let Some(id) = self
+            .session
+            .get("mme")
+            .and_then(|m| m.get("kcsharingUserId"))
+            .and_then(|v| v.as_str())
+        {
+            return Ok(id.to_string());
+        }
+        let dsid = self.session_id();
+        let id = crate::icloud::ck_app_init(
+            &dsid,
+            mme_token,
+            crate::groups::KCSHARING_CONTAINER,
+            &self.device,
+            &mut self.anisette,
+        )?;
+        if let Some(mme) = self.session.get_mut("mme").and_then(|m| m.as_object_mut()) {
+            mme.insert("kcsharingUserId".into(), Value::String(id.clone()));
+        }
+        let _ = crate::session::save(&self.session);
+        Ok(id)
     }
 
     /// The class key of a view, fetched record by record (two requests).
@@ -453,6 +542,15 @@ fn build_transport(session: &Value, device: &Device) -> Result<CloudKitTransport
         .and_then(|m| m.get("cloudKitUserId"))
         .and_then(|v| v.as_str())
         .ok_or(Error::NotSignedIn)?;
+    build_transport_for(ck_token, user_id, device)
+}
+
+/// A transport for one container.
+fn build_transport_for(
+    ck_token: &str,
+    user_id: &str,
+    device: &Device,
+) -> Result<CloudKitTransport> {
     let config = DeviceConfig {
         device_uuid: device.device_id.clone(),
         serial: device.serial.clone(),

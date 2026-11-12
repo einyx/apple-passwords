@@ -108,6 +108,13 @@ impl SrpClient {
         to_bytes(&self.a_public)
     }
 
+    /// The public ephemeral value, padded to the width of the group.
+    ///
+    /// The idmsa web sign-in wants the full 256 bytes.
+    pub fn a_public_padded(&self) -> Vec<u8> {
+        to_padded(&self.a_public, WIDTH)
+    }
+
     /// Answer the server's challenge.
     ///
     /// `password_key` is the *stretched* password (see [`stretch_password`]) - the

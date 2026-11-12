@@ -71,7 +71,11 @@ fn write_message(message: &Value) -> std::io::Result<()> {
 }
 
 /// Answer a request.
-fn handle(request: &Value, credentials: &mut Vec<Credential>, aliases: &[Value]) -> Value {
+fn handle(
+    request: &Value,
+    credentials: &mut Vec<Credential>,
+    aliases: &[icp_core::hme::HmeAlias],
+) -> Value {
     let cmd = request.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
     match cmd {
         "ping" => json!({"ok": true, "count": credentials.len()}),
@@ -84,6 +88,12 @@ fn handle(request: &Value, credentials: &mut Vec<Credential>, aliases: &[Value])
                 .iter()
                 .filter(|c| domains_match(domain, &c.domain) || title_matches(domain, c))
                 .map(credential_json)
+                .collect();
+            // Only the aliases the page's domain uses.
+            let aliases: Vec<Value> = aliases
+                .iter()
+                .filter(|a| icp_core::hme::matches_domain(domain, a))
+                .map(|a| a.public_dict())
                 .collect();
             json!({"ok": true, "credentials": matched, "aliases": aliases})
         }
@@ -265,18 +275,7 @@ fn credential_json(c: &Credential) -> Value {
 /// `example.com`, and the shorter side has to contain a dot - a stored domain of
 /// `com` would otherwise match every .com page.
 fn domains_match(page: &str, stored: &str) -> bool {
-    let p = normalise(page);
-    let s = normalise(stored);
-    if p.is_empty() || s.is_empty() {
-        return false;
-    }
-    if p == s {
-        return true;
-    }
-    if !p.contains('.') || !s.contains('.') {
-        return false;
-    }
-    p.ends_with(&format!(".{s}")) || s.ends_with(&format!(".{p}"))
+    icp_core::hostmatch::domains_match(page, stored)
 }
 
 /// A stored login with no host of its own can still match, by its title - but
@@ -286,10 +285,10 @@ fn domains_match(page: &str, stored: &str) -> bool {
 /// This is the fallback for the *dotless* entries only: a login stored against
 /// `example.com` never matches `login.example.com` by its name.
 fn title_matches(page: &str, credential: &Credential) -> bool {
-    if normalise(&credential.domain).contains('.') {
+    if icp_core::hostmatch::normalise(&credential.domain).contains('.') {
         return false;
     }
-    let host = normalise(page);
+    let host = icp_core::hostmatch::normalise(page);
     let labels: Vec<&str> = host.split('.').filter(|l| !l.is_empty()).collect();
     if labels.len() < 2 {
         return false;
@@ -322,22 +321,6 @@ const GENERIC: [&str; 11] = [
     "www",
 ];
 
-/// Reduce a URL or host to a bare lowercase hostname (strip scheme/port/path/leading www).
-fn normalise(value: &str) -> String {
-    let mut v = value.trim().to_lowercase();
-    if let Some((_, rest)) = v.split_once("://") {
-        v = rest.to_string();
-    }
-    v = v.split('/').next().unwrap_or("").to_string();
-    v = v.split('?').next().unwrap_or("").to_string();
-    v = v.rsplit('@').next().unwrap_or("").to_string();
-    v = v.split(':').next().unwrap_or("").to_string();
-    if let Some(rest) = v.strip_prefix("www.") {
-        v = rest.to_string();
-    }
-    v
-}
-
 /// A site name and nothing else - no scheme, no path, no whitespace.
 fn valid_domain(domain: &str) -> bool {
     if domain.is_empty() || domain.len() > 253 {
@@ -351,24 +334,7 @@ fn valid_domain(domain: &str) -> bool {
         .all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '_')
 }
 
-/// The Hide My Email aliases, from the cache the Python client writes.
-fn load_aliases() -> Vec<Value> {
-    let path = icp_core::device::config_dir().join("aliases.enc");
-    if !path.exists() {
-        return Vec::new();
-    }
-    let Ok(blob) = std::fs::read(&path) else {
-        return Vec::new();
-    };
-    let Ok(plaintext) = icp_core::session::open(&icp_core::session::master_key(), &blob) else {
-        return Vec::new();
-    };
-    let Ok(parsed) = serde_json::from_slice::<Value>(&plaintext) else {
-        return Vec::new();
-    };
-    parsed
-        .get("aliases")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default()
+/// The Hide My Email aliases, from the encrypted cache.
+fn load_aliases() -> Vec<icp_core::hme::HmeAlias> {
+    icp_core::hme::load()
 }

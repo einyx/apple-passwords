@@ -15,8 +15,11 @@ The protocol was reverse-engineered from the wire; the findings are written up i
 | --- | --- |
 | Read the keychain | working - every credential decrypts |
 | Write a login | working - the write is read back and decrypted before it is reported |
+| Sign in | working - the SRP exchange, the two factors and the escrow-based join |
 | The desktop app | working (GTK4 + libadwaita) |
-| Sign in | not yet - the app reads an existing session (see below) |
+| The browser extension | working - fill, save, update, and the one-time codes |
+| The shared groups | working - the groups you are a member of open and decrypt |
+| Hide My Email | working - the aliases are fetched and cached |
 
 ## Installing
 
@@ -51,20 +54,29 @@ The GTK4 development files (`libgtk-4-dev`, `libadwaita-1-dev`) are needed.
 ## Using it
 
 ```sh
-icp-cli check      # what the client can see (no secrets)
-icp-cli sync       # fetch the keychain into the local vault
-icp-cli show       # list the vault
+icp-cli login               # sign in, join the keychain trust, and sync
+icp-cli sync                # fetch the keychain (and the shared groups) into the vault
+icp-cli show                # list the vault
+icp-cli groups              # the shared password groups
+icp-cli aliases             # the Hide My Email aliases
 icp-cli add <domain> <user> <password>
+icp-cli status              # what the session holds
 ```
 
 The desktop app is `icp-gui`.
 
+## The browser extension
+
+The extension is a native-messaging host: `icp-host` answers the browser's
+requests from the local vault. It fills the logins, records the new ones - with a
+strong-password suggestion - and writes a changed password back to the keychain.
+
 ## The session
 
-The app reads the session the Python implementation (`iCloud-Keychain-for-Linux`)
-wrote - the same file, the same keyring item, the same vault - so there is one
-sign-in, not two. Signing in from scratch (the SRP exchange and the escrow-based
-join) is not ported yet.
+The session lives in `~/.config/icp/`, encrypted with a libsodium secret box whose
+key is in the GNOME keyring. The Python implementation
+(`iCloud-Keychain-for-Linux`) reads and writes the same file, the same keyring
+item and the same vault, so the two can share one sign-in.
 
 ## The vault
 

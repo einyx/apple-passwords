@@ -825,7 +825,7 @@ fn sync(window: &adw::ApplicationWindow, state: Rc<AppState>) {
         let result = (|| -> Result<usize, String> {
             let mut engine = icp_core::engine::Engine::open(None).map_err(|e| e.to_string())?;
             let creds = engine
-                .sync(icp_core::ckks::KEYCHAIN_ZONES)
+                .sync_with_groups(icp_core::ckks::KEYCHAIN_ZONES)
                 .map_err(|e| e.to_string())?;
             icp_core::vault::save(&creds).map_err(|e| e.to_string())?;
             Ok(creds.len())

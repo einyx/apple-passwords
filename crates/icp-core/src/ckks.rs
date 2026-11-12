@@ -370,6 +370,60 @@ fn parse_field_value(raw: &[u8]) -> Result<Option<FieldValue>> {
 #[allow(clippy::type_complexity)]
 pub type ChangesPage = (Vec<CloudKitRecord>, Option<Vec<u8>>, Option<u64>);
 
+/// Parse a `CKDPRecordZoneChangesResponse` into its zones.
+pub fn parse_zone_changes_response(raw: &[u8]) -> Result<ZoneChanges> {
+    let f = Fields::decode(raw)?;
+    let mut zones = Vec::new();
+    for change in f.get_all(1) {
+        let Value::Bytes(bytes) = change else {
+            continue;
+        };
+        let cf = Fields::decode(bytes)?;
+        let Some(zid) = cf.bytes(1) else { continue };
+        let info = parse_zone_identifier(zid)?;
+        zones.push(ZoneChange {
+            name: info.0,
+            raw: zid.to_vec(),
+            change_type: cf.uint(2),
+        });
+    }
+    Ok(ZoneChanges {
+        zones,
+        continuation_token: f.bytes(2).map(|b| b.to_vec()),
+        status: f.uint(4),
+    })
+}
+
+/// A `RecordZoneIdentifier`, as a name.
+fn parse_zone_identifier(raw: &[u8]) -> Result<(String, Vec<u8>)> {
+    let f = Fields::decode(raw)?;
+    let name = f
+        .bytes(1)
+        .and_then(|v| Fields::decode(v).ok())
+        .and_then(|v| v.string(1))
+        .unwrap_or_default();
+    Ok((name, raw.to_vec()))
+}
+
+/// A zone that changed.
+#[derive(Debug, Clone)]
+pub struct ZoneChange {
+    /// The zone's name.
+    pub name: String,
+    /// The zone identifier, verbatim.
+    pub raw: Vec<u8>,
+    /// 2 = deleted.
+    pub change_type: Option<u64>,
+}
+
+/// The zones that changed.
+#[derive(Debug, Clone, Default)]
+pub struct ZoneChanges {
+    pub zones: Vec<ZoneChange>,
+    pub continuation_token: Option<Vec<u8>>,
+    pub status: Option<u64>,
+}
+
 /// Parse a `CKDPRecordRetrieveChangesResponse` into its records.
 pub fn parse_retrieve_changes_response(raw: &[u8]) -> Result<ChangesPage> {
     let f = Fields::decode(raw)?;

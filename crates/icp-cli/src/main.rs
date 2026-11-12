@@ -10,9 +10,14 @@ fn main() {
     let command = args.get(1).map(|s| s.as_str()).unwrap_or("help");
     let result = match command {
         "sync" => cmd_sync(&args),
+        "groups" => cmd_groups(&args),
+        "aliases" => cmd_aliases(&args),
         "show" => cmd_show(&args),
         "add" => cmd_add(&args),
         "check" => cmd_check(),
+        "status" => cmd_status(&args),
+        "diag" => cmd_diag(&args),
+        "logout" => cmd_logout(&args),
         "dump" => cmd_dump(),
         "update" => cmd_update(&args),
         "delete" => cmd_delete(&args),
@@ -35,6 +40,8 @@ fn usage() {
 
   sync            fetch the keychain and decrypt it into the vault
   show [query]    list the credentials in the vault
+  groups          the shared password groups
+  aliases         the Hide My Email aliases
   add <domain>    add a login to the iCloud Keychain
   check           report what the client can see (no secrets)
 "
@@ -48,10 +55,80 @@ fn open() -> Result<Engine, String> {
 fn cmd_sync(_args: &[String]) -> Result<(), String> {
     let mut engine = open()?;
     let creds = engine
-        .sync(icp_core::ckks::KEYCHAIN_ZONES)
+        .sync_with_groups(icp_core::ckks::KEYCHAIN_ZONES)
         .map_err(|e| e.to_string())?;
     icp_core::vault::save(&creds).map_err(|e| e.to_string())?;
     println!("{} credentials", creds.len());
+    Ok(())
+}
+
+/// The Hide My Email aliases: refreshed from Apple, then cached.
+fn cmd_aliases(args: &[String]) -> Result<(), String> {
+    use icp_core::hme;
+    use icp_core::webauth;
+    use icp_core::{login::ask, session};
+
+    let mut record = session::load()
+        .map_err(|e| e.to_string())?
+        .ok_or("not signed in - run `icp login` first")?;
+    let refresh = !args.iter().any(|a| a == "--cached");
+    if !refresh {
+        for alias in hme::load() {
+            println!(
+                "{:<32} {:<20} -> {}",
+                alias.address, alias.label, alias.forward_to
+            );
+        }
+        return Ok(());
+    }
+    let (mut session, account) = webauth::ensure_session(&mut record, || {
+        let code = ask("6-digit code: ");
+        if code.is_empty() {
+            return Err(icp_core::Error::Apple("no code given".into()));
+        }
+        Ok(code)
+    })
+    .map_err(|e| e.to_string())?;
+    session::save(&record).map_err(|e| e.to_string())?;
+    let base = webauth::extract_webservices(&account)
+        .get("premiummailsettings")
+        .cloned()
+        .ok_or("this account has no Hide My Email service")?;
+    let aliases = hme::list(&mut session, &base).map_err(|e| e.to_string())?;
+    hme::save(&aliases).map_err(|e| e.to_string())?;
+    for alias in &aliases {
+        println!(
+            "{:<32} {:<20} -> {}",
+            alias.address, alias.label, alias.forward_to
+        );
+    }
+    println!("{} aliases", aliases.len());
+    Ok(())
+}
+
+/// The shared groups, and what they hold.
+fn cmd_groups(_args: &[String]) -> Result<(), String> {
+    let mut engine = open()?;
+    let items = engine
+        .sync_items(icp_core::ckks::KEYCHAIN_ZONES)
+        .map_err(|e| e.to_string())?;
+    let groups = engine.fetch_groups(&items).map_err(|e| e.to_string())?;
+    if groups.is_empty() {
+        println!("no shared groups");
+        return Ok(());
+    }
+    for group in groups {
+        let logins = group.credentials();
+        println!(
+            "{:<28} items={:<4} logins={:<4}",
+            group.label(),
+            group.items.len(),
+            logins.len()
+        );
+        for credential in logins {
+            println!("    {:<36}  {}", credential.domain, credential.username);
+        }
+    }
     Ok(())
 }
 
@@ -99,7 +176,7 @@ fn cmd_dump() -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_login(_args: &[String]) -> Result<(), String> {
+fn cmd_login(args: &[String]) -> Result<(), String> {
     use icp_core::login::{ask, ask_secret, sign_in};
     use icp_core::{anisette::Anisette, device::Device};
 
@@ -146,6 +223,14 @@ fn cmd_login(_args: &[String]) -> Result<(), String> {
         "username".into(),
         serde_json::Value::String(username.clone()),
     );
+    // The password is kept (encrypted, in the session file) so the web session
+    // can be established without asking for it again.
+    if !args.iter().any(|a| a == "--no-save-password") {
+        object.insert(
+            "password".into(),
+            serde_json::Value::String(password.clone()),
+        );
+    }
     object.insert("dsid".into(), serde_json::Value::String(login.dsid.clone()));
     object.insert(
         "dsid_numeric".into(),
@@ -290,6 +375,85 @@ fn cmd_delete(args: &[String]) -> Result<(), String> {
         .delete_password(&record, "Passwords")
         .map_err(|e| e.to_string())?;
     println!("deleted (record {record})");
+    Ok(())
+}
+
+/// The account's state: is it signed in, is it joined, how fresh is the vault.
+fn cmd_status(_args: &[String]) -> Result<(), String> {
+    let record = icp_core::session::load().map_err(|e| e.to_string())?;
+    let Some(record) = record else {
+        println!("signed in:   no - run `icp login`");
+        return Ok(());
+    };
+    let username = record
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    println!("signed in:   yes ({username})");
+    let octagon = record.get("octagon");
+    let joined = octagon
+        .and_then(|o| o.get("peer_id"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    println!(
+        "joined:      {}",
+        if joined.is_empty() {
+            "no - run `icp join`"
+        } else {
+            "yes"
+        }
+    );
+    if !joined.is_empty() {
+        println!("peer:        {joined}");
+    }
+    let vault = icp_core::vault::load().unwrap_or_default();
+    println!("logins:      {}", vault.len());
+    if let Ok(meta) = std::fs::metadata(icp_core::device::vault_file()) {
+        if let Ok(modified) = meta.modified() {
+            if let Ok(age) = modified.elapsed() {
+                println!("vault:       {} minutes old", age.as_secs() / 60);
+            }
+        }
+    }
+    let mme = record.get("mme");
+    let token = mme
+        .and_then(|m| m.get("tokens"))
+        .and_then(|t| t.get("cloudKitToken"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    println!(
+        "cloudkit token: {}",
+        if token.is_empty() {
+            "missing"
+        } else {
+            "present"
+        }
+    );
+    Ok(())
+}
+
+/// The zones and what they hold.
+fn cmd_diag(_args: &[String]) -> Result<(), String> {
+    let mut engine = open()?;
+    let records = engine
+        .fetch_zones(icp_core::ckks::KEYCHAIN_ZONES)
+        .map_err(|e| e.to_string())?;
+    let mut by_type: std::collections::BTreeMap<&str, usize> = Default::default();
+    for r in &records {
+        *by_type.entry(r.record_type.as_str()).or_default() += 1;
+    }
+    println!("zones:  {}", icp_core::ckks::KEYCHAIN_ZONES.len());
+    for (kind, count) in by_type {
+        println!("  {kind:<14} {count}");
+    }
+    println!("total records: {}", records.len());
+    Ok(())
+}
+
+/// Forget the session (the device identity stays).
+fn cmd_logout(_args: &[String]) -> Result<(), String> {
+    icp_core::session::clear().map_err(|e| e.to_string())?;
+    println!("Session cleared. The device identity is kept.");
     Ok(())
 }
 

@@ -38,7 +38,7 @@ impl From<&Credential> for StoredCredential {
             notes: c.notes.clone(),
             last_used: c.last_used,
             totp: c.totp.clone(),
-            group: String::new(),
+            group: c.group.clone(),
             record_name: c.record_name.clone(),
         }
     }
@@ -56,6 +56,7 @@ impl From<StoredCredential> for Credential {
             last_used: c.last_used,
             totp: c.totp,
             record_name: c.record_name,
+            group: c.group,
         }
     }
 }

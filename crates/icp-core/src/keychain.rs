@@ -250,6 +250,8 @@ pub struct Credential {
     pub totp: String,
     /// The CloudKit record this login lives in - what an edit or a delete addresses.
     pub record_name: String,
+    /// The shared group this login comes from, if any.
+    pub group: String,
 }
 
 /// Apple's epoch: 2001-01-01, in unix seconds.
@@ -536,6 +538,7 @@ pub fn credentials_from_items(items: &[(String, plist::Value)]) -> Vec<Credentia
                 last_used: 0.0,
                 totp: String::new(),
                 record_name: login.record_name.clone(),
+                group: String::new(),
             };
             if let Some((_, side)) = side {
                 if !side.title.is_empty() {

@@ -9,7 +9,11 @@ use icp_core::keychain::Credential;
 use crate::AppState;
 
 /// Open the dialog. With a credential, it edits that one; without, it adds a new one.
-pub fn open(parent: &adw::ApplicationWindow, state: Rc<AppState>, existing: Option<Credential>) {
+pub fn open(
+    parent: &adw::ApplicationWindow,
+    state: Rc<AppState>,
+    existing: Option<Credential>,
+) -> gtk::Dialog {
     let editing = existing.is_some();
     // A real dialog, not an AdwWindow: an AdwWindow has no background of its own,
     // so what is behind it shows through.
@@ -18,10 +22,13 @@ pub fn open(parent: &adw::ApplicationWindow, state: Rc<AppState>, existing: Opti
         .transient_for(parent)
         .title(if editing { "Edit login" } else { "Add a login" })
         .build();
-    dialog.set_default_size(400, if editing { 280 } else { 360 });
+    dialog.set_default_size(420, if editing { 320 } else { 430 });
 
     let toolbar = adw::ToolbarView::new();
     let header = adw::HeaderBar::new();
+    let title = gtk::Label::new(Some(if editing { "Edit login" } else { "Add a login" }));
+    title.add_css_class("title");
+    header.set_title_widget(Some(&title));
 
     let cancel = gtk::Button::with_label("Cancel");
     cancel.connect_clicked({
@@ -50,7 +57,9 @@ pub fn open(parent: &adw::ApplicationWindow, state: Rc<AppState>, existing: Opti
         }
     });
     header.pack_end(&save);
-    toolbar.add_top_bar(&header);
+    // The header bar is the dialog's title bar: the window decoration then
+    // draws it, and there is no second strip with the title in it.
+    dialog.set_titlebar(Some(&header));
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.add_css_class("background");
@@ -112,7 +121,7 @@ pub fn open(parent: &adw::ApplicationWindow, state: Rc<AppState>, existing: Opti
         set_entry_text(&password, &credential.password);
         set_entry_text(&notes, &credential.notes);
     } else {
-        site.set_text("https://");
+        set_entry_text(&site, "https://");
     }
 
     // The save button is only live once there is something to save.
@@ -143,22 +152,14 @@ pub fn open(parent: &adw::ApplicationWindow, state: Rc<AppState>, existing: Opti
     }
 
     dialog.present();
+    dialog
 }
 
 /// Set an entry row's text.
+///
+/// The text comes out selected, so typing over it replaces it.
 fn set_entry_text(row: &adw::EntryRow, text: &str) {
-    let mut found = None;
-    let mut child = row.first_child();
-    while let Some(c) = child {
-        if let Some(entry) = c.downcast_ref::<gtk::Entry>() {
-            found = Some(entry.clone());
-            break;
-        }
-        child = c.next_sibling();
-    }
-    if let Some(entry) = found {
-        entry.set_text(text);
-    }
+    row.set_text(text);
 }
 
 /// The site name from whatever was typed: a URL, or a bare host.

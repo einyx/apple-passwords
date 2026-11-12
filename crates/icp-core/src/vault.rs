@@ -13,7 +13,11 @@ use crate::keychain::Credential;
 use crate::session;
 
 /// The stored form of a credential.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Every field has a default: the Python implementation writes a smaller set, and
+/// a vault that is one field short is still a good vault.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 struct StoredCredential {
     domain: String,
     username: String,
@@ -24,6 +28,10 @@ struct StoredCredential {
     last_used: f64,
     totp: String,
     group: String,
+    /// The keychain record a login lives in.
+    ///
+    /// The Python implementation does not write this, so it may be missing.
+    #[serde(default)]
     record_name: String,
 }
 

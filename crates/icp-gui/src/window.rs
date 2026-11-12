@@ -23,12 +23,17 @@ const SITE_COLOURS: [(&str, &str); 8] = [
 
 /// The app's CSS.
 const CSS: &str = "
-.sidebar { background-color: rgba(127, 127, 127, 0.07); }
+.sidebar { background-color: alpha(@theme_fg_color, 0.04); }
 .card {
   border-radius: 12px;
   padding: 8px 10px;
 }
 .card .count { font-size: 11px; opacity: 0.55; }
+.login-row {
+  border-radius: 10px;
+  padding: 4px 8px;
+  margin-bottom: 2px;
+}
 .site-logo {
   border-radius: 10px;
   color: #fff;
@@ -45,14 +50,44 @@ const CSS: &str = "
 .menu-item { padding: 6px 12px; }
 ";
 
+/// The hover and the selection.
+///
+/// The theme paints a hovered row with a translucent colour, which *replaces*
+/// the row's background: on a card that reads as a transparent card, and on a
+/// plain list there is no hover at all. These rules keep the background opaque
+/// and blend the tint into it instead. The application's priority is above the
+/// theme's, so they win.
+const HOVER_CSS: &str = "
+.card:hover {
+  background-color: color-mix(in srgb, currentColor 6%, var(--card-bg-color));
+}
+.card.selected {
+  background-color: color-mix(in srgb, var(--accent-color) 16%, var(--card-bg-color));
+}
+.login-row:hover {
+  background-color: alpha(@theme_fg_color, 0.05);
+}
+.login-row.selected {
+  background-color: alpha(@accent_bg_color, 0.16);
+}
+";
+
 pub fn on_activate(app: &adw::Application) {
     // The app's styles.
     let provider = gtk::CssProvider::new();
     provider.load_from_data(CSS);
+    let hover_provider = gtk::CssProvider::new();
+    hover_provider.load_from_data(HOVER_CSS);
     if let Some(display) = gtk::gdk::Display::default() {
         gtk::style_context_add_provider_for_display(
             &display,
             &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+        // The hover and selection rules.
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &hover_provider,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
     }
@@ -79,7 +114,9 @@ pub fn on_activate(app: &adw::Application) {
     add_button.connect_clicked({
         let window = window.clone();
         let state = state.clone();
-        move |_| crate::add::open(&window, state.clone(), None)
+        move |_| {
+            let _ = crate::add::open(&window, state.clone(), None);
+        }
     });
     header.pack_start(&add_button);
     let sync_button = gtk::Button::from_icon_name("view-refresh-symbolic");
@@ -189,14 +226,29 @@ pub fn on_activate(app: &adw::Application) {
                 }
                 let row = list_row(c, &ticker);
                 let cred = c.clone();
+                // The login that is selected stays highlighted.
+                if state.selected.borrow().as_ref() == Some(&cred) {
+                    row.add_css_class("selected");
+                }
+                let clicked = row.clone();
                 row.connect_activated({
                     let detail = detail.clone();
                     let state = state.clone();
                     let ticker = ticker.clone();
+                    let list_box = list_box.clone();
                     let cred = cred.clone();
                     move |_| {
                         *state.selected.borrow_mut() = Some(cred.clone());
                         show_detail(&detail, &cred, &ticker);
+                        // Only one row is highlighted at a time.
+                        let mut child = list_box.first_child();
+                        while let Some(row) = child {
+                            if let Some(row) = row.downcast_ref::<gtk::ListBoxRow>() {
+                                row.remove_css_class("selected");
+                            }
+                            child = row.next_sibling();
+                        }
+                        clicked.add_css_class("selected");
                     }
                 });
                 // The right-click menu.
@@ -206,7 +258,7 @@ pub fn on_activate(app: &adw::Application) {
             }
             if shown == 0 {
                 let page = adw::StatusPage::builder()
-                    .icon_name("view-list-symbolic")
+                    .icon_name("dialog-password-symbolic")
                     .title("Nothing here")
                     .description("Sync to fill the vault, or add a login with the + button.")
                     .build();
@@ -239,6 +291,44 @@ pub fn on_activate(app: &adw::Application) {
     });
 
     window.present();
+
+    // A debug hook: render the window - and the add dialog - to PNGs, and quit.
+    if let Ok(path) = std::env::var("ICP_SCREENSHOT") {
+        let state = state.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(1200), move || {
+            let surface = window
+                .clone()
+                .native()
+                .and_then(|n| n.surface())
+                .expect("the window has a surface");
+            let renderer = gtk::gsk::Renderer::for_surface(&surface).expect("a renderer");
+            if let Err(e) = save_png(&window, &path, &renderer) {
+                eprintln!("the screenshot failed: {e}");
+            }
+            let dialog = crate::add::open(&window, state, None);
+            let dialog_path = path.replace(".png", "-add.png");
+            glib::timeout_add_local_once(std::time::Duration::from_millis(800), move || {
+                if let Err(e) = save_png(&dialog, &dialog_path, &renderer) {
+                    eprintln!("the dialog screenshot failed: {e}");
+                }
+                std::process::exit(0);
+            });
+        });
+    }
+}
+
+/// Render a widget to a PNG.
+fn save_png(
+    widget: &impl IsA<gtk::Widget>,
+    path: &str,
+    renderer: &gtk::gsk::Renderer,
+) -> Result<(), String> {
+    let paintable = gtk::WidgetPaintable::new(Some(widget));
+    let snapshot = gtk::Snapshot::new();
+    paintable.snapshot(&snapshot, 1240.0, 760.0);
+    let node = snapshot.to_node().ok_or("no render node")?;
+    let texture = renderer.render_texture(&node, None);
+    gtk::gdk::Texture::save_to_png(&texture, path).map_err(|e| e.to_string())
 }
 
 /// Draw the category cards.
@@ -287,6 +377,7 @@ fn list_row(c: &Credential, ticker: &Rc<Ticker>) -> adw::ActionRow {
         .build();
     row.set_title_lines(1);
     row.set_subtitle_lines(1);
+    row.add_css_class("login-row");
 
     let (fg, bg) = site_colour(&c.domain);
     let logo = gtk::Label::new(Some(&initial(&c.title, &c.domain)));
@@ -348,7 +439,9 @@ fn add_context_menu(
         let window = window.clone();
         let state = state.clone();
         let credential = credential.clone();
-        Box::new(move || crate::add::open(&window, state.clone(), Some(credential.clone())))
+        Box::new(move || {
+            let _ = crate::add::open(&window, state.clone(), Some(credential.clone()));
+        })
     });
     add_item("Delete", {
         let window = window.clone();
@@ -471,6 +564,7 @@ fn category_card(category: &Category, count: usize, selected: bool) -> adw::Acti
         .title(category.title())
         .activatable(true)
         .build();
+    row.add_css_class("card");
     let icon = gtk::Image::from_icon_name(category.icon());
     row.add_prefix(&icon);
     let count_label = gtk::Label::new(Some(&count.to_string()));
@@ -505,7 +599,7 @@ fn site_colour(domain: &str) -> (&'static str, &'static str) {
 fn show_empty_detail(detail: &gtk::Box) {
     clear(detail);
     let page = adw::StatusPage::builder()
-        .icon_name("view-list-symbolic")
+        .icon_name("system-search-symbolic")
         .title("No login selected")
         .description("Pick a login to see its details.")
         .build();

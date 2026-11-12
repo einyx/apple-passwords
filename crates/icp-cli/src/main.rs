@@ -263,7 +263,20 @@ fn cmd_login(args: &[String]) -> Result<(), String> {
 
     icp_core::session::save(&record).map_err(|e| e.to_string())?;
     println!("Signed in as {username}.");
-    println!("The keychain trust still has to be joined - run `icp login` again for that.");
+
+    // The first sync: it works right away when the trust circle is already
+    // joined, and says what to do when it is not.
+    match icp_core::engine::Engine::open(None).and_then(|mut engine| {
+        let creds = engine.sync_with_groups(icp_core::ckks::KEYCHAIN_ZONES)?;
+        icp_core::vault::save(&creds)?;
+        Ok(creds.len())
+    }) {
+        Ok(count) => println!("{count} logins in the vault."),
+        Err(e) => {
+            println!("The keychain trust still has to be joined - run `icp join` for that.");
+            println!("({e})");
+        }
+    }
     Ok(())
 }
 

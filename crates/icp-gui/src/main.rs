@@ -29,9 +29,14 @@ fn main() -> gtk::glib::ExitCode {
     // "icp-gui.desktop" rather than the one that is installed.
     glib::set_prgname(Some("org.icp.passwords"));
 
-    let app = adw::Application::builder()
-        .application_id("org.icp.passwords")
-        .build();
+    // A debug run gets its own application id, so it does not just activate the
+    // instance that is already running.
+    let app_id = if std::env::var("ICP_SCREENSHOT").is_ok() {
+        "org.icp.passwords.shot"
+    } else {
+        "org.icp.passwords"
+    };
+    let app = adw::Application::builder().application_id(app_id).build();
     app.connect_activate(window::on_activate);
     app.connect_startup(|_| {
         // The app's icon: the bundled SVG, plus whatever the icon theme has.

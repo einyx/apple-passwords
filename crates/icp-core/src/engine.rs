@@ -274,6 +274,109 @@ impl Engine {
         })
     }
 
+    /// Change a password that is already in the keychain.
+    ///
+    /// The record is fetched first: an update has to present the version tag it
+    /// read, so a stale write is refused rather than silently overwriting someone
+    /// else's change.
+    pub fn update_password(
+        &mut self,
+        record_name: &str,
+        new_password: &str,
+        domain: &str,
+        username: &str,
+        title: Option<&str>,
+        notes: Option<&str>,
+        zone: &str,
+    ) -> Result<write::SaveOutcome> {
+        let user_id = self.user_id()?;
+        let (class_key_id, class_key) = self.view_class_key(zone, write::CLASS_A_VIEW)?;
+
+        let existing = self
+            .transport
+            .fetch_record(record_name, zone, &user_id, &mut self.anisette, &self.device)?
+            .ok_or_else(|| Error::Apple("that login is no longer in the keychain".into()))?;
+        let encver = existing.get_int("encver").unwrap_or(2);
+        let gen = existing.get_int("gen").unwrap_or(0);
+        let uploadver = existing
+            .get_str("uploadver")
+            .map(|s| s.to_string())
+            .unwrap_or_else(write::default_uploadver);
+        // The parent key the item hangs under - the fetched record knows it.
+        let parent = existing
+            .get_str("parentkeyref")
+            .unwrap_or(class_key_id.as_str())
+            .to_string();
+
+        let item = write::build_internet_password_item(
+            domain,
+            username,
+            new_password,
+            title,
+            notes,
+            None,
+            "",
+            0,
+            now_unix(),
+        );
+        let built = write::build_item_record(
+            &item,
+            &class_key,
+            &parent,
+            zone,
+            &user_id,
+            Some(record_name),
+            encver,
+            gen,
+            &uploadver,
+        )?;
+        let record =
+            write::build_item_record_message(&built.record_name, &built.fields, zone, &user_id);
+        let (etag, _) = self.transport.save_record_with_etag(
+            &record,
+            true,
+            crate::ckks::SAVE_SEMANTICS_OVERRIDE,
+            Some(existing.etag.as_str()),
+            &mut self.anisette,
+            &self.device,
+        )?;
+
+        let fetched = self
+            .transport
+            .fetch_record(
+                &built.record_name,
+                zone,
+                &user_id,
+                &mut self.anisette,
+                &self.device,
+            )?
+            .ok_or_else(|| {
+                Error::Apple("the write could not be read back - not confirmed".into())
+            })?;
+        if !write::verify_saved_record(&fetched, &class_key, new_password, Some(username)) {
+            return Err(Error::Apple(
+                "the write could not be read back - not confirmed".into(),
+            ));
+        }
+        Ok(write::SaveOutcome {
+            record_name: built.record_name,
+            etag,
+        })
+    }
+
+    /// Remove a login from the keychain.
+    pub fn delete_password(&mut self, record_name: &str, zone: &str) -> Result<()> {
+        let user_id = self.user_id()?;
+        self.transport.delete_record(
+            record_name,
+            zone,
+            &user_id,
+            None,
+            &mut self.anisette,
+            &self.device,
+        )
+    }
+
     /// Remove a record that was written (the rollback path).
     pub fn delete_record(&mut self, record_name: &str, zone: &str) -> Result<()> {
         let user_id = self.user_id()?;

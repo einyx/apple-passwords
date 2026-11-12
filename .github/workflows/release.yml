@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: the tag to release
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+            deb-arch: amd64
+            rpm-arch: x86_64
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            deb-arch: arm64
+            rpm-arch: aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libssl-dev pkg-config \
+            dpkg-dev rpm-build
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked --workspace
+      - name: Test
+        run: cargo test --release --locked --workspace
+      - name: The .deb
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          packaging/build-deb.sh "$version" "${{ matrix.deb-arch }}" \
+            "apple-passwords_${version}_${{ matrix.deb-arch }}.deb"
+      - name: The .rpm
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p ~/rpmbuild/SOURCES ~/rpmbuild/SPECS ~/rpmbuild/BUILD ~/rpmbuild/RPMS
+          tar czf ~/rpmbuild/SOURCES/apple-passwords-${version}.tar.gz \
+            --transform "s,^,apple-passwords-${version}/," .
+          cp packaging/apple-passwords.spec ~/rpmbuild/SPECS/
+          rpmbuild --define "_topdir ~/rpmbuild" --define "_version $version" \
+            --define "_arch ${{ matrix.rpm-arch }}" \
+            -bb ~/rpmbuild/SPECS/apple-passwords.spec
+          find ~/rpmbuild/RPMS -name '*.rpm' -exec cp {} . \;
+      - name: The binaries
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist/apple-passwords_${version}_${{ matrix.arch }}
+          cp target/release/icp-gui target/release/icp-cli \
+            dist/apple-passwords_${version}_${{ matrix.arch }}/
+          cp README.md dist/apple-passwords_${version}_${{ matrix.arch }}/
+          cp crates/icp-gui/icons/org.icp.passwords.svg \
+            dist/apple-passwords_${version}_${{ matrix.arch }}/
+          tar czf apple-passwords_${version}_${{ matrix.arch }}.tar.gz \
+            -C dist apple-passwords_${version}_${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.arch }}
+          path: |
+            apple-passwords_*.deb
+            apple-passwords_*.rpm
+            apple-passwords_*.tar.gz
+
+  flatpak:
+    name: flatpak
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub/flatpak-builder:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the Flatpak
+        run: |
+          flatpak-builder --user --install --force-clean --disable-roofs-fuse \
+            --repo=flatpak-repo packaging/org.icp.passwords.yml
+          flatpak build-bundle flatpak-repo build.flatpak org.icp.passwords
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak
+          path: build.flatpak
+
+  release:
+    name: publish
+    runs-on: ubuntu-24.04
+    needs: [build, flatpak]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd artifacts
+          sha256sum *.deb *.rpm *.tar.gz build.flatpak > SHA256SUMS
+          cat SHA256SUMS
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: Apple Passwords ${{ github.event.inputs.tag || github.ref_name }}
+          body_path: RELEASE.md
+          files: |
+            artifacts/*.deb
+            artifacts/*.rpm
+            artifacts/*.tar.gz
+            artifacts/build.flatpak
+            artifacts/SHA256SUMS

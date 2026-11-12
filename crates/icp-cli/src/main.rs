@@ -14,6 +14,8 @@ fn main() {
         "add" => cmd_add(&args),
         "check" => cmd_check(),
         "dump" => cmd_dump(),
+        "update" => cmd_update(&args),
+        "delete" => cmd_delete(&args),
         _ => {
             usage();
             Ok(())
@@ -95,6 +97,27 @@ fn cmd_dump() -> Result<(), String> {
     Ok(())
 }
 
+fn cmd_update(args: &[String]) -> Result<(), String> {
+    let record = args.get(2).cloned().ok_or("no record name given")?;
+    let password = args.get(3).cloned().ok_or("no password given")?;
+    let mut engine = open()?;
+    let outcome = engine
+        .update_password(&record, &password, "", "", None, None, "Passwords")
+        .map_err(|e| e.to_string())?;
+    println!("updated (record {})", outcome.record_name);
+    Ok(())
+}
+
+fn cmd_delete(args: &[String]) -> Result<(), String> {
+    let record = args.get(2).cloned().ok_or("no record name given")?;
+    let mut engine = open()?;
+    engine
+        .delete_password(&record, "Passwords")
+        .map_err(|e| e.to_string())?;
+    println!("deleted (record {record})");
+    Ok(())
+}
+
 fn cmd_check() -> Result<(), String> {
     let mut engine = open()?;
     println!("peer:      {}", engine.peer_id().map_err(|e| e.to_string())?);
@@ -113,6 +136,11 @@ fn cmd_check() -> Result<(), String> {
         .sync(&icp_core::ckks::KEYCHAIN_ZONES)
         .map_err(|e| e.to_string())?;
     println!("credentials: {}", creds.len());
+    let with_code = creds.iter().filter(|c| !c.totp.is_empty()).count();
+    println!("with a verification code: {with_code}");
+    for c in creds.iter().filter(|c| !c.totp.is_empty()).take(3) {
+        println!("   {} @ {} -> {}", c.username, c.domain, c.totp);
+    }
     print!("sample:");
     for c in creds.iter().take(3) {
         print!(" {}@{}", c.username, c.domain);

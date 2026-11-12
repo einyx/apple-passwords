@@ -98,6 +98,8 @@ impl FieldValue {
 pub struct CloudKitRecord {
     pub record_name: String,
     pub record_type: String,
+    /// The record's version tag - an update has to present the one it read.
+    pub etag: String,
     pub fields: Vec<(String, FieldValue)>,
 }
 
@@ -224,10 +226,12 @@ pub fn build_record_save_request(
     save_semantics: u64,
     zone_protection_info_tag: Option<&str>,
     record_protection_info_tag: Option<&str>,
+    etag: Option<&str>,
 ) -> Vec<u8> {
     let mut w = Writer::new();
     w.message(1, Some(record))
         .bool(2, Some(merge))
+        .string(4, etag)
         .uint64(6, Some(save_semantics))
         .string(7, zone_protection_info_tag)
         .string(8, record_protection_info_tag);
@@ -277,6 +281,7 @@ pub struct CkDate {
 pub fn parse_record(raw: &[u8]) -> Result<CloudKitRecord> {
     let f = Fields::decode(raw)?;
     let mut record = CloudKitRecord::default();
+    record.etag = f.string(1).unwrap_or_default();
 
     if let Some(id) = f.bytes(2) {
         let idf = Fields::decode(id)?;
@@ -423,7 +428,7 @@ mod tests {
 
     #[test]
     fn save_request_layout() {
-        let raw = build_record_save_request(b"rec", true, SAVE_SEMANTICS_FAIL_IF_EXISTS, None, None);
+        let raw = build_record_save_request(b"rec", true, SAVE_SEMANTICS_FAIL_IF_EXISTS, None, None, None);
         let f = Fields::decode(&raw).unwrap();
         assert_eq!(f.field_numbers(), vec![1, 2, 6]);
         assert_eq!(f.uint(2), Some(1));

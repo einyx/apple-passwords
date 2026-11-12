@@ -249,6 +249,8 @@ pub struct Credential {
     pub mdat: f64,
     pub last_used: f64,
     pub totp: String,
+    /// The CloudKit record this login lives in - what an edit or a delete addresses.
+    pub record_name: String,
 }
 
 /// Apple's epoch: 2001-01-01, in unix seconds.
@@ -427,7 +429,7 @@ pub fn credentials_from_items(items: &[(String, plist::Value)]) -> Vec<Credentia
     let mut logins: Vec<Login> = Vec::new();
     let mut sidecars: Vec<(String, Sidecar)> = Vec::new();
 
-    for (_, item) in items {
+    for (record_name, item) in items {
         let dict = match item.as_dictionary() {
             Some(d) => d,
             None => continue,
@@ -478,7 +480,9 @@ pub fn credentials_from_items(items: &[(String, plist::Value)]) -> Vec<Credentia
                                 "notes" => {
                                     notes = value.as_string().unwrap_or("").to_string()
                                 }
-                                "totp" => totp = value.as_string().unwrap_or("").to_string(),
+                                "totp" => {
+                                    totp = crate::totp::uri_from_sidecar(Some(value))
+                                }
                                 "ctxt" => last_used = sidecar_last_used(value),
                                 _ => {}
                             }
@@ -510,6 +514,7 @@ pub fn credentials_from_items(items: &[(String, plist::Value)]) -> Vec<Credentia
                     password,
                     label,
                     mdat,
+                    record_name: record_name.clone(),
                 });
             }
             _ => continue,
@@ -529,6 +534,7 @@ pub fn credentials_from_items(items: &[(String, plist::Value)]) -> Vec<Credentia
                 mdat: login.mdat,
                 last_used: 0.0,
                 totp: String::new(),
+                record_name: login.record_name.clone(),
             };
             if let Some((_, side)) = side {
                 if !side.title.is_empty() {
@@ -559,6 +565,7 @@ struct Login {
     password: String,
     label: String,
     mdat: f64,
+    record_name: String,
 }
 
 struct Sidecar {

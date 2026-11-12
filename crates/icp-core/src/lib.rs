@@ -18,6 +18,7 @@ pub mod nska;
 pub mod octagon;
 pub mod proto;
 pub mod session;
+pub mod totp;
 pub mod vault;
 pub mod write;
 

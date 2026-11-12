@@ -389,7 +389,21 @@ CloudDB/CloudDBClient.desc\"; messageType=RequestOperation; delimited=true"
         anisette: &mut Anisette,
         device: &Device,
     ) -> Result<(Option<String>, Option<ckks::CloudKitRecord>)> {
-        let request = ckks::build_record_save_request(record, merge, save_semantics, None, None);
+        self.save_record_with_etag(record, merge, save_semantics, None, anisette, device)
+    }
+
+    /// Save one record, presenting the version tag of the record it replaces.
+    pub fn save_record_with_etag(
+        &self,
+        record: &[u8],
+        merge: bool,
+        save_semantics: u64,
+        etag: Option<&str>,
+        anisette: &mut Anisette,
+        device: &Device,
+    ) -> Result<(Option<String>, Option<ckks::CloudKitRecord>)> {
+        let request =
+            ckks::build_record_save_request(record, merge, save_semantics, None, None, etag);
         let result = self.perform(
             CKDATABASE_SAVE_URL,
             ckks::OP_TYPE_RECORD_SAVE,

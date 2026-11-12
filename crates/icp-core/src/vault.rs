@@ -24,6 +24,7 @@ struct StoredCredential {
     last_used: f64,
     totp: String,
     group: String,
+    record_name: String,
 }
 
 impl From<&Credential> for StoredCredential {
@@ -38,6 +39,7 @@ impl From<&Credential> for StoredCredential {
             last_used: c.last_used,
             totp: c.totp.clone(),
             group: String::new(),
+            record_name: c.record_name.clone(),
         }
     }
 }
@@ -53,6 +55,7 @@ impl From<StoredCredential> for Credential {
             mdat: c.mdat,
             last_used: c.last_used,
             totp: c.totp,
+            record_name: c.record_name,
         }
     }
 }

@@ -12,6 +12,9 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rand::seq::SliceRandom;
+use rand::Rng;
+
 use base64::Engine;
 
 use crate::ckks::{self, CloudKitRecord, FieldValue};
@@ -296,6 +299,53 @@ pub fn uuid_upper() -> String {
         &hex[20..32]
     )
     .to_uppercase()
+}
+
+/// The characters a generated password is made of.
+///
+/// The ambiguous ones (`l`, `I`, `O`, `0`, `1`) are left out: a password that has to
+/// be read off a screen and typed by hand should not contain letters and digits that
+/// look alike.
+const LOWER: &str = "abcdefghijkmnopqrstuvwxyz";
+const UPPER: &str = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+const DIGITS: &str = "23456789";
+const SYMBOLS: &str = "!@#$%^&*-_=+";
+
+/// Generate a strong password.
+///
+/// At least one character of each class, the rest drawn at random from all of them.
+pub fn generate_password(length: usize) -> String {
+    let length = length.max(12);
+    let mut rng = rand::thread_rng();
+    let mut out = String::with_capacity(length);
+    // One of each class to start with.
+    for set in [LOWER, UPPER, DIGITS, SYMBOLS] {
+        let pick = set
+            .as_bytes()
+            .choose(&mut rng)
+            .copied()
+            .unwrap_or(b'x') as char;
+        out.push(pick);
+    }
+    let all: Vec<char> = format!("{LOWER}{UPPER}{DIGITS}{SYMBOLS}").chars().collect();
+    while out.chars().count() < length {
+        let pick = all.choose(&mut rng).copied().unwrap_or('x');
+        out.push(pick);
+    }
+    // Shuffle, so the guaranteed characters are not always at the front.
+    let mut chars: Vec<char> = out.chars().collect();
+    for i in (1..chars.len()).rev() {
+        let j = rng.gen_range(0..=i);
+        chars.swap(i, j);
+    }
+    chars.into_iter().collect()
+}
+
+/// A few suggestions, the way a password manager offers them.
+pub fn suggest_passwords(count: usize) -> Vec<String> {
+    (0..count.max(1))
+        .map(|i| generate_password(if i == 0 { 20 } else { 16 }))
+        .collect()
 }
 
 /// A reference-only helper: the record's fields, in the order Apple's writer uses.

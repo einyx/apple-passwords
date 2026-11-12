@@ -11,7 +11,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use adw::prelude::*;
-use gtk::prelude::*;
 use icp_core::keychain::Credential;
 
 mod add;
@@ -23,7 +22,7 @@ const CLIPBOARD_TTL: u32 = 20;
 
 fn main() -> gtk::glib::ExitCode {
     // libadwaita has to be initialised before any of its widgets exist.
-    adw::init();
+    adw::init().expect("libadwaita");
 
     let app = adw::Application::builder()
         .application_id("org.icp.passwords")
@@ -66,9 +65,7 @@ fn icon_dirs() -> Vec<std::path::PathBuf> {
     if let Ok(data) = std::env::var("XDG_DATA_HOME") {
         dirs.push(std::path::PathBuf::from(data).join("icons/hicolor/scalable/apps"));
     } else if let Ok(home) = std::env::var("HOME") {
-        dirs.push(
-            std::path::PathBuf::from(home).join(".local/share/icons/hicolor/scalable/apps"),
-        );
+        dirs.push(std::path::PathBuf::from(home).join(".local/share/icons/hicolor/scalable/apps"));
     }
     dirs
 }
@@ -214,9 +211,7 @@ pub fn relative(when: f64) -> String {
         .map(|d| d.as_secs_f64())
         .unwrap_or(0.0);
     let days = ((now - when) / 86400.0).floor() as i64;
-    if days < 0 {
-        "today".to_string()
-    } else if days == 0 {
+    if days <= 0 {
         "today".to_string()
     } else if days == 1 {
         "yesterday".to_string()

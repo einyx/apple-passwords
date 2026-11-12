@@ -10,7 +10,7 @@
 
 use aes_gcm::aead::{AeadInPlace, KeyInit as AeadKeyInit};
 use aes_gcm::aes::cipher::consts::U16;
-use aes_siv::siv::{Aes256Siv, Siv};
+use aes_siv::siv::Aes256Siv;
 use p384::ecdh::diffie_hellman;
 use p384::ecdsa::signature::{Signer, Verifier};
 use p384::ecdsa::{Signature, SigningKey, VerifyingKey};
@@ -20,7 +20,7 @@ use rand::RngCore;
 
 /// AES-GCM with a 16-byte nonce (Apple's SecurityFoundation uses one).
 type Aes256Gcm16 = aes_gcm::AesGcm<aes_gcm::aes::Aes256, U16>;
-use sha2::{Digest, Sha256, Sha384};
+use sha2::{Digest, Sha256};
 
 use crate::error::{Error, Result};
 
@@ -54,7 +54,7 @@ pub fn pad_iso7816(data: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(data.len() + pad);
     out.extend_from_slice(data);
     out.push(0x80);
-    out.extend(std::iter::repeat(0u8).take(pad - 1));
+    out.extend(std::iter::repeat_n(0u8, pad - 1));
     out
 }
 
@@ -81,8 +81,8 @@ pub fn siv_encrypt(key: &[u8], plaintext: &[u8], associated: &[&[u8]]) -> Result
     if key.len() != CLASS_KEY_LEN {
         return Err(Error::Crypto(format!("bad SIV key length {}", key.len())));
     }
-    let mut cipher = Aes256Siv::new_from_slice(key)
-        .map_err(|e| Error::Crypto(format!("bad SIV key: {e}")))?;
+    let mut cipher =
+        Aes256Siv::new_from_slice(key).map_err(|e| Error::Crypto(format!("bad SIV key: {e}")))?;
     cipher
         .encrypt(associated.iter().copied(), plaintext)
         .map_err(|e| Error::Crypto(format!("SIV encryption failed: {e}")))
@@ -93,8 +93,8 @@ pub fn siv_decrypt(key: &[u8], wrapped: &[u8], associated: &[&[u8]]) -> Result<V
     if key.len() != CLASS_KEY_LEN {
         return Err(Error::Crypto(format!("bad SIV key length {}", key.len())));
     }
-    let mut cipher = Aes256Siv::new_from_slice(key)
-        .map_err(|e| Error::Crypto(format!("bad SIV key: {e}")))?;
+    let mut cipher =
+        Aes256Siv::new_from_slice(key).map_err(|e| Error::Crypto(format!("bad SIV key: {e}")))?;
     cipher
         .decrypt(associated.iter().copied(), wrapped)
         .map_err(|_| Error::Crypto("SIV decryption failed (wrong key or data)".into()))
@@ -151,8 +151,8 @@ pub fn ecies_decrypt(
     let key = &derived[..32];
     let iv = &derived[32..48];
 
-    let cipher = Aes256Gcm16::new_from_slice(key)
-        .map_err(|e| Error::Crypto(format!("bad key: {e}")))?;
+    let cipher =
+        Aes256Gcm16::new_from_slice(key).map_err(|e| Error::Crypto(format!("bad key: {e}")))?;
     let nonce = aes_gcm::Nonce::<U16>::from_slice(iv);
     let mut buf = ciphertext.to_vec();
     buf.extend_from_slice(auth_code);
@@ -162,7 +162,7 @@ pub fn ecies_decrypt(
     let (body, tag) = buf.split_at(buf.len() - 16);
     let mut body = body.to_vec();
     cipher
-        .decrypt_in_place_detached(&nonce, &[], &mut body, aes_gcm::Tag::from_slice(tag))
+        .decrypt_in_place_detached(nonce, &[], &mut body, aes_gcm::Tag::from_slice(tag))
         .map_err(|_| Error::Crypto("ECIES decryption failed".into()))?;
     Ok(body)
 }
@@ -217,7 +217,6 @@ pub fn load_private_x963(blob: &[u8]) -> Result<SecretKey> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aes_siv::aead::AeadCore;
 
     #[test]
     fn x963_kdf_known_vector() {
@@ -293,7 +292,9 @@ mod tests {
         let key = SecretKey::random(&mut rng);
         let data = b"peer permanent info";
         let sig = sign_sha384(&key, data).unwrap();
-        let vk = *SigningKey::from_bytes(&key.to_bytes()).unwrap().verifying_key();
+        let vk = *SigningKey::from_bytes(&key.to_bytes())
+            .unwrap()
+            .verifying_key();
         assert!(verify_sha384(&vk, data, &sig));
         assert!(!verify_sha384(&vk, b"other", &sig));
     }

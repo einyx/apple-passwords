@@ -68,7 +68,8 @@ impl Writer {
     pub fn bool(&mut self, field: u32, value: Option<bool>) -> &mut Self {
         if let Some(v) = value {
             self.tag(field, WT_VARINT);
-            self.buf.extend_from_slice(&encode_varint(if v { 1 } else { 0 }));
+            self.buf
+                .extend_from_slice(&encode_varint(if v { 1 } else { 0 }));
         }
         self
     }
@@ -170,10 +171,7 @@ impl Fields {
 
     /// The first value of a field, if any.
     pub fn get(&self, field: u32) -> Option<&Value> {
-        self.inner
-            .iter()
-            .find(|(f, _)| *f == field)
-            .map(|(_, v)| v)
+        self.inner.iter().find(|(f, _)| *f == field).map(|(_, v)| v)
     }
 
     /// Every value of a field.
@@ -195,7 +193,8 @@ impl Fields {
 
     /// The first value of a field as a string.
     pub fn string(&self, field: u32) -> Option<String> {
-        self.bytes(field).and_then(|b| String::from_utf8(b.to_vec()).ok())
+        self.bytes(field)
+            .and_then(|b| String::from_utf8(b.to_vec()).ok())
     }
 
     /// The first value of a field as an integer.

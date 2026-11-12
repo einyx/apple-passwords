@@ -63,7 +63,10 @@ pub fn build_internet_password_item(
 ) -> plist::Value {
     let mut d = plist::Dictionary::new();
     d.insert("acct".into(), plist::Value::String(username.into()));
-    d.insert("agrp".into(), plist::Value::String(ACCESS_GROUP_NETWORK.into()));
+    d.insert(
+        "agrp".into(),
+        plist::Value::String(ACCESS_GROUP_NETWORK.into()),
+    );
     d.insert("atyp".into(), plist::Value::String(AUTH_TYPE_FORM.into()));
     d.insert("cdat".into(), plist::Value::Date(date_from_unix(now)));
     d.insert("class".into(), plist::Value::String(INET_CLASS.into()));
@@ -115,7 +118,7 @@ fn random_bytes(n: usize) -> Vec<u8> {
     buf
 }
 
-fn now_unix() -> f64 {
+pub fn now_unix() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs_f64())
@@ -135,6 +138,7 @@ pub struct BuiltRecord {
 /// `uploadver`, `wrappedkey` - because the record's own fields are what the item's
 /// authenticated data is computed over: a reader recomputes it from the record it
 /// fetched, so a field it does not know about would break the check.
+#[allow(clippy::too_many_arguments)]
 pub fn build_item_record(
     item: &plist::Value,
     class_key: &[u8],
@@ -148,15 +152,18 @@ pub fn build_item_record(
 ) -> Result<BuiltRecord> {
     let record_name = record_name
         .map(|s| s.to_string())
-        .unwrap_or_else(|| uuid_upper());
+        .unwrap_or_else(uuid_upper);
     let item_key = random_bytes(64);
 
     let mut plaintext = Vec::new();
     plist::to_writer_binary(&mut plaintext, item)
         .map_err(|e| Error::Apple(format!("could not encode the item: {e}")))?;
 
-    let wrapped_key = base64::engine::general_purpose::STANDARD
-        .encode(crypto::siv_encrypt(class_key, &item_key, &[])?);
+    let wrapped_key = base64::engine::general_purpose::STANDARD.encode(crypto::siv_encrypt(
+        class_key,
+        &item_key,
+        &[],
+    )?);
 
     let mut fields: Vec<(String, FieldValue)> = vec![
         ("encver".into(), FieldValue::Int(encver)),
@@ -180,7 +187,10 @@ pub fn build_item_record(
     let data = crypto::encrypt_item(&item_key, &plaintext, &headers)?;
     fields.insert(0, ("data".into(), FieldValue::Bytes(data)));
 
-    Ok(BuiltRecord { record_name, fields })
+    Ok(BuiltRecord {
+        record_name,
+        fields,
+    })
 }
 
 /// Build the `CKDPRecord` for an item.
@@ -270,7 +280,10 @@ pub fn verify_saved_record(
     let Some(d) = value.as_dictionary() else {
         return false;
     };
-    let secret = d.get("v_Data").and_then(|v| v.as_data()).unwrap_or_default();
+    let secret = d
+        .get("v_Data")
+        .and_then(|v| v.as_data())
+        .unwrap_or_default();
     if secret != expected_password.as_bytes() {
         return false;
     }
@@ -320,11 +333,7 @@ pub fn generate_password(length: usize) -> String {
     let mut out = String::with_capacity(length);
     // One of each class to start with.
     for set in [LOWER, UPPER, DIGITS, SYMBOLS] {
-        let pick = set
-            .as_bytes()
-            .choose(&mut rng)
-            .copied()
-            .unwrap_or(b'x') as char;
+        let pick = set.as_bytes().choose(&mut rng).copied().unwrap_or(b'x') as char;
         out.push(pick);
     }
     let all: Vec<char> = format!("{LOWER}{UPPER}{DIGITS}{SYMBOLS}").chars().collect();
@@ -392,7 +401,10 @@ mod tests {
         );
         assert_eq!(d.get("pdmn").unwrap().as_string(), Some("ak"));
         assert_eq!(d.get("ptcl").unwrap().as_string(), Some("htps"));
-        assert_eq!(d.get("labl").unwrap().as_string(), Some("example.com (alice)"));
+        assert_eq!(
+            d.get("labl").unwrap().as_string(),
+            Some("example.com (alice)")
+        );
         assert_eq!(d.get("v_Data").unwrap().as_data().unwrap(), b"hunter2");
         assert_eq!(d.get("sha1").unwrap().as_data().unwrap().len(), 20);
         assert_eq!(d.get("musr").unwrap().as_data().unwrap().len(), 0);
@@ -430,17 +442,28 @@ mod tests {
         assert!(names.contains(&"wrappedkey"));
         assert!(names.contains(&"parentkeyref"));
 
-        let raw = build_item_record_message(
-            &built.record_name,
-            &built.fields,
-            PASSWORDS_ZONE,
-            "user-1",
-        );
+        let raw =
+            build_item_record_message(&built.record_name, &built.fields, PASSWORDS_ZONE, "user-1");
         let record = ckks::parse_record(&raw).unwrap();
         assert_eq!(record.record_type, "item");
-        assert!(verify_saved_record(&record, &class_key, "hunter2", Some("alice")));
-        assert!(!verify_saved_record(&record, &class_key, "wrong", Some("alice")));
-        assert!(!verify_saved_record(&record, &[9u8; 64], "hunter2", Some("alice")));
+        assert!(verify_saved_record(
+            &record,
+            &class_key,
+            "hunter2",
+            Some("alice")
+        ));
+        assert!(!verify_saved_record(
+            &record,
+            &class_key,
+            "wrong",
+            Some("alice")
+        ));
+        assert!(!verify_saved_record(
+            &record,
+            &[9u8; 64],
+            "hunter2",
+            Some("alice")
+        ));
     }
 
     #[test]
@@ -469,15 +492,16 @@ mod tests {
             "test 1.0 (x)",
         )
         .unwrap();
-        let raw = build_item_record_message(
-            &built.record_name,
-            &built.fields,
-            PASSWORDS_ZONE,
-            "user-1",
-        );
+        let raw =
+            build_item_record_message(&built.record_name, &built.fields, PASSWORDS_ZONE, "user-1");
         let mut record = ckks::parse_record(&raw).unwrap();
         // A record under a different name must not decrypt.
         record.record_name = "OTHER".into();
-        assert!(!verify_saved_record(&record, &class_key, "hunter2", Some("alice")));
+        assert!(!verify_saved_record(
+            &record,
+            &class_key,
+            "hunter2",
+            Some("alice")
+        ));
     }
 }

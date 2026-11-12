@@ -4,7 +4,6 @@
 use std::rc::Rc;
 
 use adw::prelude::*;
-use gtk::prelude::*;
 use icp_core::keychain::Credential;
 
 use crate::AppState;
@@ -12,13 +11,14 @@ use crate::AppState;
 /// Open the dialog. With a credential, it edits that one; without, it adds a new one.
 pub fn open(parent: &adw::ApplicationWindow, state: Rc<AppState>, existing: Option<Credential>) {
     let editing = existing.is_some();
-    let dialog = adw::Window::builder()
+    // A real dialog, not an AdwWindow: an AdwWindow has no background of its own,
+    // so what is behind it shows through.
+    let dialog = gtk::Dialog::builder()
         .modal(true)
         .transient_for(parent)
         .title(if editing { "Edit login" } else { "Add a login" })
-        .default_width(440)
-        .default_height(if editing { 300 } else { 380 })
         .build();
+    dialog.set_default_size(440, if editing { 300 } else { 380 });
 
     let toolbar = adw::ToolbarView::new();
     let header = adw::HeaderBar::new();
@@ -102,7 +102,7 @@ pub fn open(parent: &adw::ApplicationWindow, state: Rc<AppState>, existing: Opti
     content.append(&suggestions_box);
 
     toolbar.set_content(Some(&content));
-    dialog.set_content(Some(&toolbar));
+    dialog.set_child(Some(&toolbar));
 
     // Prefill, when editing.
     if let Some(credential) = &existing {
@@ -179,7 +179,7 @@ fn domain_of(text: &str) -> String {
 
 /// Write the login into the keychain.
 fn save_clicked(
-    dialog: &adw::Window,
+    dialog: &gtk::Dialog,
     parent: &adw::ApplicationWindow,
     state: Rc<AppState>,
     save: gtk::Button,
@@ -242,14 +242,7 @@ fn save_clicked(
                 }
                 _ => {
                     engine
-                        .add_password(
-                            &domain,
-                            account.trim(),
-                            &password,
-                            None,
-                            notes,
-                            "Passwords",
-                        )
+                        .add_password(&domain, account.trim(), &password, None, notes, "Passwords")
                         .map_err(|e| e.to_string())?;
                     Ok(format!("{domain} saved to your iCloud Keychain"))
                 }
@@ -260,8 +253,8 @@ fn save_clicked(
 }
 
 /// The dialog's four entries, found by walking its widget tree.
-fn entries(window: &adw::Window) -> Option<(String, String, String, String)> {
-    let root = window.content()?;
+fn entries(window: &gtk::Dialog) -> Option<(String, String, String, String)> {
+    let root = window.child()?;
     let mut found: Vec<(String, gtk::Entry)> = Vec::new();
     collect_entries(&root, &mut found);
     let get = |title: &str| -> String {
@@ -271,12 +264,7 @@ fn entries(window: &adw::Window) -> Option<(String, String, String, String)> {
             .map(|(_, e)| e.text().to_string())
             .unwrap_or_default()
     };
-    Some((
-        get("Site"),
-        get("Account"),
-        get("Password"),
-        get("Notes"),
-    ))
+    Some((get("Site"), get("Account"), get("Password"), get("Notes")))
 }
 
 /// Walk the tree for the entry rows.

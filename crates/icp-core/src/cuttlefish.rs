@@ -180,6 +180,7 @@ pub fn encode_fetch_recoverable_tlkshares_request(peer_id: &str) -> Vec<u8> {
 }
 
 /// The recoverable TLKShares: (share records, synckey records), as raw record bytes.
+#[allow(clippy::type_complexity)]
 pub fn parse_recoverable_tlkshares_response(raw: &[u8]) -> Result<(Vec<Vec<u8>>, Vec<Vec<u8>>)> {
     let f = Fields::decode(raw)?;
     let inner = |blob: Option<&[u8]>| -> Option<Vec<u8>> {

@@ -4,11 +4,10 @@
 use std::rc::Rc;
 
 use adw::prelude::*;
-use gtk::prelude::*;
 use icp_core::keychain::Credential;
 
 use crate::ticker::Ticker;
-use crate::{copy_secret, relative, AppState, Category};
+use crate::{copy_secret, AppState, Category};
 
 /// The site colours, picked so they stay readable on both themes.
 const SITE_COLOURS: [(&str, &str); 8] = [
@@ -166,6 +165,7 @@ pub fn on_activate(app: &adw::Application) {
         let search = search.clone();
         let ticker = ticker.clone();
         let window = window.clone();
+        let detail = detail.clone();
         Rc::new(move || {
             let query = search.text().to_lowercase();
             while let Some(child) = list_box.first_child() {
@@ -214,6 +214,7 @@ pub fn on_activate(app: &adw::Application) {
     // Rebuild the category cards.
     rebuild_categories(&categories, &state, &title, &rebuild);
     rebuild();
+    show_empty_detail(&detail);
 
     search.connect_search_changed({
         let rebuild = rebuild.clone();
@@ -263,7 +264,7 @@ fn rebuild_categories(
         });
         grid.attach(&card, (index % 2) as i32, (index / 2) as i32, 1, 1);
     }
-    title.set_text(&current.title());
+    title.set_text(current.title());
 }
 
 /// One row of the list: the site's logo, its name, the account and its code.
@@ -637,10 +638,8 @@ fn show_detail(detail: &gtk::Box, c: &Credential, ticker: &Rc<Ticker>) {
             provider.load_from_data(&format!(
                 "progressbar trough {{ background-color: {colour}; min-height: 6px; }}"
             ));
-            bar.style_context().add_provider(
-                &provider,
-                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-            );
+            bar.style_context()
+                .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
         }
         security.append(&bar);
         let text = gtk::Label::new(Some(&label));
@@ -705,11 +704,7 @@ fn password_field(c: &Credential) -> gtk::Box {
         click.connect_released(move |_, _clicks, _x, _y| {
             let now = !revealed.get();
             revealed.set(now);
-            label.set_text(&if now {
-                secret.clone()
-            } else {
-                masked(&secret)
-            });
+            label.set_text(&if now { secret.clone() } else { masked(&secret) });
         });
         value.add_controller(click);
     }
@@ -829,14 +824,18 @@ fn sync(window: &adw::ApplicationWindow, state: Rc<AppState>) {
             Ok(n) => format!("{n} logins"),
             Err(e) => format!("sync failed: {e}"),
         };
-        show_toast(&window, &message, if result.is_ok() { "ok" } else { "error" });
+        show_toast(
+            &window,
+            &message,
+            if result.is_ok() { "ok" } else { "error" },
+        );
         glib::ControlFlow::Break
     });
     std::thread::spawn(move || {
         let result = (|| -> Result<usize, String> {
             let mut engine = icp_core::engine::Engine::open(None).map_err(|e| e.to_string())?;
             let creds = engine
-                .sync(&icp_core::ckks::KEYCHAIN_ZONES)
+                .sync(icp_core::ckks::KEYCHAIN_ZONES)
                 .map_err(|e| e.to_string())?;
             icp_core::vault::save(&creds).map_err(|e| e.to_string())?;
             Ok(creds.len())

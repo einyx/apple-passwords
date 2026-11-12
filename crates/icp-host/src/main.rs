@@ -31,7 +31,7 @@ use serde_json::{json, Value};
 const MAX_MESSAGE_BYTES: usize = 8 * 1024 * 1024;
 
 fn main() {
-    let mut credentials = vault::load().unwrap_or_default();
+    let credentials = vault::load().unwrap_or_default();
     let aliases = load_aliases();
 
     loop {
@@ -82,14 +82,17 @@ fn handle(request: &Value, credentials: &[Credential], aliases: &[Value]) -> Val
             }
             let matched: Vec<Value> = credentials
                 .iter()
-                .filter(|c| domains_match(domain, &c.domain))
-                .map(|c| credential_json(c))
+                .filter(|c| domains_match(domain, &c.domain) || title_matches(domain, c))
+                .map(credential_json)
                 .collect();
             json!({"ok": true, "credentials": matched, "aliases": aliases})
         }
         "totp" => {
             let domain = request.get("domain").and_then(|v| v.as_str()).unwrap_or("");
-            let username = request.get("username").and_then(|v| v.as_str()).unwrap_or("");
+            let username = request
+                .get("username")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             for c in credentials {
                 if c.username == username && domains_match(domain, &c.domain) {
                     if let Some(code) = icp_core::totp::code_for(c, None) {
@@ -121,8 +124,14 @@ fn handle(request: &Value, credentials: &[Credential], aliases: &[Value]) -> Val
 /// Write a new login into the keychain.
 fn save(request: &Value) -> Value {
     let domain = request.get("domain").and_then(|v| v.as_str()).unwrap_or("");
-    let username = request.get("username").and_then(|v| v.as_str()).unwrap_or("");
-    let password = request.get("password").and_then(|v| v.as_str()).unwrap_or("");
+    let username = request
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let password = request
+        .get("password")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if !valid_domain(domain) {
         return json!({"ok": false, "error": "that does not look like a site name"});
     }
@@ -131,17 +140,12 @@ fn save(request: &Value) -> Value {
     }
     let notes = request.get("notes").and_then(|v| v.as_str());
     match Engine::open(None) {
-        Ok(mut engine) => match engine.add_password(
-            domain,
-            username,
-            password,
-            None,
-            notes,
-            "Passwords",
-        ) {
-            Ok(outcome) => json!({"ok": true, "record_name": outcome.record_name}),
-            Err(e) => json!({"ok": false, "error": e.to_string()}),
-        },
+        Ok(mut engine) => {
+            match engine.add_password(domain, username, password, None, notes, "Passwords") {
+                Ok(outcome) => json!({"ok": true, "record_name": outcome.record_name}),
+                Err(e) => json!({"ok": false, "error": e.to_string()}),
+            }
+        }
         Err(e) => json!({"ok": false, "error": e.to_string()}),
     }
 }
@@ -149,17 +153,18 @@ fn save(request: &Value) -> Value {
 /// Change a password that is already in the keychain.
 fn update(request: &Value) -> Value {
     let record = request.get("record").and_then(|v| v.as_str()).unwrap_or("");
-    let password = request.get("password").and_then(|v| v.as_str()).unwrap_or("");
+    let password = request
+        .get("password")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if record.is_empty() || password.is_empty() {
         return json!({"ok": false, "error": "missing record or password"});
     }
     match Engine::open(None) {
-        Ok(mut engine) => {
-            match engine.update_password(record, password, None, None, "Passwords") {
-                Ok(outcome) => json!({"ok": true, "record_name": outcome.record_name}),
-                Err(e) => json!({"ok": false, "error": e.to_string()}),
-            }
-        }
+        Ok(mut engine) => match engine.update_password(record, password, None, None, "Passwords") {
+            Ok(outcome) => json!({"ok": true, "record_name": outcome.record_name}),
+            Err(e) => json!({"ok": false, "error": e.to_string()}),
+        },
         Err(e) => json!({"ok": false, "error": e.to_string()}),
     }
 }
@@ -250,8 +255,17 @@ fn title_matches(page: &str, credential: &Credential) -> bool {
 }
 
 const GENERIC: [&str; 11] = [
-    "account", "accounts", "admin", "app", "dashboard", "login", "password", "passwords", "signin",
-    "sign", "www",
+    "account",
+    "accounts",
+    "admin",
+    "app",
+    "dashboard",
+    "login",
+    "password",
+    "passwords",
+    "signin",
+    "sign",
+    "www",
 ];
 
 /// Reduce a URL or host to a bare lowercase hostname (strip scheme/port/path/leading www).

@@ -21,6 +21,10 @@ use crate::write;
 /// The default anisette server - the one the local service runs on.
 pub const DEFAULT_ANISETTE_URL: &str = "http://127.0.0.1:6969";
 
+/// The view keys: the top-level keys, and the `synckey` records that carry them.
+#[allow(clippy::type_complexity)]
+pub type ViewKeys = (Vec<(String, Vec<u8>)>, Vec<CloudKitRecord>);
+
 /// The live client.
 pub struct Engine {
     pub session: Value,
@@ -94,9 +98,8 @@ impl Engine {
     /// A freshly-joined peer is only entitled to the always-on views (WiFi, Home,
     /// ...); the escrow-recovered *sponsor* is entitled to the user-controllable ones
     /// (Passwords, Manatee). Both are asked, and the results are unioned.
-    pub fn fetch_view_keys(
-        &mut self,
-    ) -> Result<(Vec<(String, Vec<u8>)>, Vec<CloudKitRecord>)> {
+    #[allow(clippy::type_complexity)]
+    pub fn fetch_view_keys(&mut self) -> Result<ViewKeys> {
         let mut tlks: Vec<(String, Vec<u8>)> = Vec::new();
         let mut synckeys: Vec<CloudKitRecord> = Vec::new();
 
@@ -109,7 +112,8 @@ impl Engine {
 
         if let Some((sponsor_id, sponsor_key)) = self.sponsor() {
             if let Ok(key) = crate::crypto::load_private_x963(&sponsor_key) {
-                let (sp_tlks, sp_synckeys) = self.fetch_recoverable_for(&sponsor_id, &key.to_bytes())?;
+                let (sp_tlks, sp_synckeys) =
+                    self.fetch_recoverable_for(&sponsor_id, &key.to_bytes())?;
                 tlks.extend(sp_tlks);
                 synckeys.extend(sp_synckeys);
             }
@@ -122,7 +126,7 @@ impl Engine {
         &mut self,
         for_peer_id: &str,
         encryption_key: &[u8],
-    ) -> Result<(Vec<(String, Vec<u8>)>, Vec<CloudKitRecord>)> {
+    ) -> Result<ViewKeys> {
         let request = cuttlefish::encode_fetch_recoverable_tlkshares_request(for_peer_id);
         let raw = self.transport.invoke(
             "fetchRecoverableTLKShares",
@@ -150,10 +154,12 @@ impl Engine {
         let user_id = self.user_id()?;
         let mut out = Vec::new();
         for zone in zones {
-            match self
-                .transport
-                .fetch_zone_records(zone, &user_id, &mut self.anisette, &self.device)
-            {
+            match self.transport.fetch_zone_records(
+                zone,
+                &user_id,
+                &mut self.anisette,
+                &self.device,
+            ) {
                 Ok(records) => out.extend(records),
                 Err(e) => {
                     // A missing or empty zone is skipped, not fatal.
@@ -175,11 +181,7 @@ impl Engine {
     }
 
     /// The class key of a view, fetched record by record (two requests).
-    pub fn view_class_key(
-        &mut self,
-        zone: &str,
-        view: &str,
-    ) -> Result<(String, Vec<u8>)> {
+    pub fn view_class_key(&mut self, zone: &str, view: &str) -> Result<(String, Vec<u8>)> {
         let user_id = self.user_id()?;
         let (tlks, _) = self.fetch_view_keys()?;
         let current = self
@@ -251,15 +253,13 @@ impl Engine {
         )?;
 
         // A save response is not proof: read the record back and decrypt it.
-        let fetched = self
-            .transport
-            .fetch_record(
-                &built.record_name,
-                zone,
-                &user_id,
-                &mut self.anisette,
-                &self.device,
-            )?;
+        let fetched = self.transport.fetch_record(
+            &built.record_name,
+            zone,
+            &user_id,
+            &mut self.anisette,
+            &self.device,
+        )?;
         let fetched = fetched.ok_or_else(|| {
             Error::Apple("the write could not be read back - not confirmed".into())
         })?;
@@ -293,7 +293,13 @@ impl Engine {
 
         let existing = self
             .transport
-            .fetch_record(record_name, zone, &user_id, &mut self.anisette, &self.device)?
+            .fetch_record(
+                record_name,
+                zone,
+                &user_id,
+                &mut self.anisette,
+                &self.device,
+            )?
             .ok_or_else(|| Error::Apple("that login is no longer in the keychain".into()))?;
         let encver = existing.get_int("encver").unwrap_or(2);
         let gen = existing.get_int("gen").unwrap_or(0);
@@ -318,7 +324,10 @@ impl Engine {
                 "v_Data".into(),
                 plist::Value::Data(new_password.as_bytes().to_vec()),
             );
-            dict.insert("mdat".into(), plist::Value::Date(write::date_from_unix(now_unix())));
+            dict.insert(
+                "mdat".into(),
+                plist::Value::Date(write::date_from_unix(now_unix())),
+            );
             if let Some(title) = title {
                 dict.insert("labl".into(), plist::Value::String(title.into()));
             }

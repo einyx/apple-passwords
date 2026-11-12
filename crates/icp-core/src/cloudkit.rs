@@ -9,8 +9,8 @@ use std::io::Write;
 use std::time::Duration;
 
 use flate2::write::GzEncoder;
-use sha1::Digest;
 use flate2::Compression;
+use sha1::Digest;
 
 use crate::anisette::Anisette;
 use crate::ckks;
@@ -18,17 +18,23 @@ use crate::device::Device;
 use crate::error::{Error, Result};
 use crate::proto::{delimit, Fields, Value, Writer};
 
-pub const CKCODE_INVOKE_URL: &str = "https://gateway.icloud.com/ckcoderouter/api/client/code/invoke";
-pub const CKDATABASE_SYNC_URL: &str = "https://gateway.icloud.com/ckdatabase/api/client/record/sync";
-pub const CKDATABASE_SAVE_URL: &str = "https://gateway.icloud.com/ckdatabase/api/client/record/save";
-pub const CKDATABASE_DELETE_URL: &str = "https://gateway.icloud.com/ckdatabase/api/client/record/delete";
-pub const CKDATABASE_RETRIEVE_URL: &str = "https://gateway.icloud.com/ckdatabase/api/client/record/retrieve";
+pub const CKCODE_INVOKE_URL: &str =
+    "https://gateway.icloud.com/ckcoderouter/api/client/code/invoke";
+pub const CKDATABASE_SYNC_URL: &str =
+    "https://gateway.icloud.com/ckdatabase/api/client/record/sync";
+pub const CKDATABASE_SAVE_URL: &str =
+    "https://gateway.icloud.com/ckdatabase/api/client/record/save";
+pub const CKDATABASE_DELETE_URL: &str =
+    "https://gateway.icloud.com/ckdatabase/api/client/record/delete";
+pub const CKDATABASE_RETRIEVE_URL: &str =
+    "https://gateway.icloud.com/ckdatabase/api/client/record/retrieve";
 
 pub const CUTTLEFISH_CONTAINER: &str = "com.apple.security.keychain";
 pub const CUTTLEFISH_BUNDLE: &str = "com.apple.security.cuttlefish";
 pub const SECURITYD_BUNDLE: &str = "com.apple.securityd";
 pub const CUTTLEFISH_SERVICE: &str = "Cuttlefish";
-pub const CK_SERVICE_IDENTITY: &str = "com.apple.cloudkit.CloudKitDaemon/1970 (com.apple.cloudd/1970)";
+pub const CK_SERVICE_IDENTITY: &str =
+    "com.apple.cloudkit.CloudKitDaemon/1970 (com.apple.cloudd/1970)";
 
 pub const ENV_PRODUCTION: u64 = 1;
 pub const DB_PRIVATE: u64 = 1;
@@ -70,7 +76,10 @@ pub fn build_header(
     let mut w = Writer::new();
     w.string(2, Some(container))
         .string(3, Some(bundle))
-        .message(7, Some(&ckks::identifier(&config.device_uuid, ckks::ID_TYPE_DEVICE)))
+        .message(
+            7,
+            Some(&ckks::identifier(&config.device_uuid, ckks::ID_TYPE_DEVICE)),
+        )
         .string(8, Some(&config.software_version))
         .string(9, Some(&config.hardware_version))
         .string(10, Some("com.apple.cloudkit.CloudKitDaemon"))
@@ -89,7 +98,9 @@ pub fn build_header(
         .uint64(29, Some(0))
         .string(
             32,
-            Some(&hex::encode(sha1::Sha1::digest(config.device_uuid.as_bytes()))),
+            Some(&hex::encode(sha1::Sha1::digest(
+                config.device_uuid.as_bytes(),
+            ))),
         )
         .string(33, Some(&config.serial))
         .uint64(34, Some(0))
@@ -220,13 +231,13 @@ CloudDB/CloudDBClient.desc\"; messageType=RequestOperation; delimited=true"
         h.insert("x-apple-request-uuid".into(), uuid_upper());
         h.insert("x-cloudkit-bundleid".into(), bundle.to_string());
         h.insert("x-cloudkit-containerid".into(), self.container.clone());
-        h.insert("x-cloudkit-databasescope".into(), database_scope.to_string());
+        h.insert(
+            "x-cloudkit-databasescope".into(),
+            database_scope.to_string(),
+        );
         h.insert("x-cloudkit-duetpreclearedmode".into(), "None".into());
         h.insert("x-cloudkit-environment".into(), "Production".into());
-        h.insert(
-            "x-cloudkit-userid".into(),
-            self.user_id.clone(),
-        );
+        h.insert("x-cloudkit-userid".into(), self.user_id.clone());
         h.insert("x-cloudkit-authtoken".into(), self.ck_token.clone());
         if let Some(hint) = routing_hint {
             h.insert("x-cloudkit-functionroutinghint".into(), hint.to_string());
@@ -238,10 +249,16 @@ CloudDB/CloudDBClient.desc\"; messageType=RequestOperation; delimited=true"
         for (k, v) in anisette.headers()? {
             h.insert(k, v);
         }
+        // The device identity is the fallback for whatever the server did not supply.
+        h.entry("X-Mme-Device-Id".to_string())
+            .or_insert_with(|| device.device_id.to_uppercase());
+        h.entry("X-Apple-I-SRL-NO".to_string())
+            .or_insert_with(|| device.serial.clone());
         Ok(h)
     }
 
     /// Build, gzip and POST a `RequestOperation`, then check the result.
+    #[allow(clippy::too_many_arguments)]
     pub fn perform(
         &self,
         url: &str,
@@ -296,10 +313,11 @@ CloudDB/CloudDBClient.desc\"; messageType=RequestOperation; delimited=true"
         })?;
         let plain = maybe_gunzip(&content);
         let messages = crate::proto::undelimit(&plain);
-        let result = parse_response_operation(messages.first().map(|m| m.as_slice()).unwrap_or(&[]))
-            .map_err(|_| Error::BadResponse {
-                url: url.to_string(),
-            })?;
+        let result =
+            parse_response_operation(messages.first().map(|m| m.as_slice()).unwrap_or(&[]))
+                .map_err(|_| Error::BadResponse {
+                    url: url.to_string(),
+                })?;
         if result.code != 1 {
             return Err(Error::Apple(format!(
                 "CloudKit operation failed: {}",
@@ -354,8 +372,7 @@ CloudDB/CloudDBClient.desc\"; messageType=RequestOperation; delimited=true"
         let mut out = Vec::new();
         let mut continuation: Option<Vec<u8>> = None;
         for _ in 0..50 {
-            let request =
-                ckks::build_retrieve_changes_request(&zid, continuation.as_deref(), 500);
+            let request = ckks::build_retrieve_changes_request(&zid, continuation.as_deref(), 500);
             let result = self.perform(
                 CKDATABASE_SYNC_URL,
                 ckks::OP_TYPE_RECORD_RETRIEVE_CHANGES,
@@ -369,7 +386,9 @@ CloudDB/CloudDBClient.desc\"; messageType=RequestOperation; delimited=true"
                 anisette,
                 device,
             )?;
-            let raw = result.field(ckks::OP_TYPE_RECORD_RETRIEVE_CHANGES).unwrap_or_default();
+            let raw = result
+                .field(ckks::OP_TYPE_RECORD_RETRIEVE_CHANGES)
+                .unwrap_or_default();
             let (records, token, status) = ckks::parse_retrieve_changes_response(&raw)?;
             out.extend(records);
             match (status, token) {

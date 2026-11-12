@@ -82,7 +82,7 @@ pub fn load() -> Result<Vec<Credential>> {
         Ok(p) => p,
         Err(e) => {
             eprintln!(
-                "cannot decrypt {} - the keyring was probably unreachable. \
+                "cannot decrypt {} ({e}) - the keyring was probably unreachable. \
                  The vault is left alone; a sync rebuilds it.",
                 path.display()
             );
@@ -90,7 +90,11 @@ pub fn load() -> Result<Vec<Credential>> {
         }
     };
     let parsed: VaultFile = serde_json::from_slice(&plaintext)?;
-    Ok(parsed.credentials.into_iter().map(Credential::from).collect())
+    Ok(parsed
+        .credentials
+        .into_iter()
+        .map(Credential::from)
+        .collect())
 }
 
 /// Write the vault.

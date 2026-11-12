@@ -19,7 +19,8 @@ use crate::error::{Error, Result};
 const KEY_SIZE: usize = 32;
 const ATTR_APPLICATION: &str = "icp";
 const ATTR_TYPE: &str = "master-key";
-const KEY_LABEL: &str = "ApplePasswords-Linux master key";
+/// The label the keyring item carries.
+pub const KEY_LABEL: &str = "ApplePasswords-Linux master key";
 
 /// Decode a stored key: raw bytes, or base64 of them.
 fn decode_key(stored: &[u8]) -> Option<Vec<u8>> {
@@ -27,7 +28,9 @@ fn decode_key(stored: &[u8]) -> Option<Vec<u8>> {
         return Some(stored.to_vec());
     }
     let text = std::str::from_utf8(stored).ok()?.trim();
-    let key = base64::engine::general_purpose::STANDARD.decode(text).ok()?;
+    let key = base64::engine::general_purpose::STANDARD
+        .decode(text)
+        .ok()?;
     if key.len() == KEY_SIZE {
         Some(key)
     } else {
@@ -37,10 +40,9 @@ fn decode_key(stored: &[u8]) -> Option<Vec<u8>> {
 
 /// The master key from the Secret Service, if there is one.
 fn key_from_secret_service() -> Option<Vec<u8>> {
-    let service = secret_service::blocking::SecretService::connect(
-        secret_service::EncryptionType::Plain,
-    )
-    .ok()?;
+    let service =
+        secret_service::blocking::SecretService::connect(secret_service::EncryptionType::Plain)
+            .ok()?;
     let collection = service.get_default_collection().ok()?;
     if collection.is_locked().unwrap_or(false) {
         // The keyring is locked and we cannot ask the user for it here.
@@ -72,7 +74,9 @@ fn key_from_file() -> Vec<u8> {
     let key = random_bytes(KEY_SIZE);
     let _ = write_private(
         &path,
-        base64::engine::general_purpose::STANDARD.encode(&key).as_bytes(),
+        base64::engine::general_purpose::STANDARD
+            .encode(&key)
+            .as_bytes(),
     );
     key
 }
@@ -89,9 +93,11 @@ pub fn seal(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>> {
         .map_err(|_| Error::Apple("bad master key".into()))?;
     let mut nonce_bytes = [0u8; 24];
     rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce_bytes);
-    let nonce = crypto_secretbox::aead::Nonce::<crypto_secretbox::XSalsa20Poly1305>::from_slice(&nonce_bytes);
+    let nonce = crypto_secretbox::aead::Nonce::<crypto_secretbox::XSalsa20Poly1305>::from_slice(
+        &nonce_bytes,
+    );
     let ciphertext = cipher
-        .encrypt(&nonce, plaintext)
+        .encrypt(nonce, plaintext)
         .map_err(|_| Error::Apple("could not encrypt".into()))?;
     let mut out = nonce.to_vec();
     out.extend_from_slice(&ciphertext);
@@ -107,15 +113,13 @@ pub fn open(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
     let (nonce, ciphertext) = data.split_at(24);
     let cipher = crypto_secretbox::XSalsa20Poly1305::new_from_slice(key)
         .map_err(|_| Error::Apple("bad master key".into()))?;
-    cipher
-        .decrypt(nonce.into(), ciphertext)
-        .map_err(|_| {
-            Error::Apple(
-                "cannot decrypt the session - the master key no longer matches it. \
+    cipher.decrypt(nonce.into(), ciphertext).map_err(|_| {
+        Error::Apple(
+            "cannot decrypt the session - the master key no longer matches it. \
                  Sign in again."
-                    .into(),
-            )
-        })
+                .into(),
+        )
+    })
 }
 
 /// Save the session.

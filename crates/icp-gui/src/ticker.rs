@@ -3,7 +3,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gtk::prelude::*;
 use icp_core::keychain::Credential;
 
 /// The labels that show a code, and the credential each belongs to.

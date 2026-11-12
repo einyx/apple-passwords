@@ -11,10 +11,10 @@
 use base64::Engine;
 use p384::SecretKey;
 
-use crate::crypto;
-use crate::error::{Error, Result};
-use crate::proto::{Fields, Value};
 use crate::ckks::{CloudKitRecord, FieldValue};
+use crate::crypto;
+use crate::error::Result;
+use crate::proto::{Fields, Value};
 
 /// The item-record fields that are *not* part of the authenticated data.
 const AAD_EXCLUDED: &[&str] = &[
@@ -51,17 +51,16 @@ pub fn authenticated_data_v2(
     let mut push = |key: &'static str, value: Vec<u8>| aad.push((key, value));
 
     // The keys are static strings so the map can be sorted by key.
-    let mut map: Vec<(&'static str, Vec<u8>)> = Vec::new();
-    map.push(("UUID", uuid.as_bytes().to_vec()));
-    map.push(("encver", le8(encver).to_vec()));
-    map.push(("gen", le8(gen).to_vec()));
-    map.push(("wrappedkey", parent_key_id.as_bytes().to_vec()));
+    let mut map: Vec<(&'static str, Vec<u8>)> = vec![
+        ("UUID", uuid.as_bytes().to_vec()),
+        ("encver", le8(encver).to_vec()),
+        ("gen", le8(gen).to_vec()),
+        ("wrappedkey", parent_key_id.as_bytes().to_vec()),
+    ];
 
     // The PCS fields are authenticated when present, with their own encodings.
-    if let Some(v) = field_value(fields, "pcsservice") {
-        if let FieldValue::Int(i) = v {
-            map.push(("pcsservice", le8(*i).to_vec()));
-        }
+    if let Some(FieldValue::Int(i)) = field_value(fields, "pcsservice") {
+        map.push(("pcsservice", le8(*i).to_vec()));
     }
     for name in ["pcspublicidentity", "pcspublickey"] {
         if let Some(FieldValue::Bytes(b)) = field_value(fields, name) {
@@ -290,7 +289,12 @@ const SIDECAR_LABEL_PREFIX: &str = "password manager metadata:";
 /// The sidecar keys that are kept (an allowlist: unknown keys are dropped).
 const SIDECAR_KEEP: &[&str] = &["notes", "title", "ctxt", "totp"];
 const PLUMBING_KEYSETS: &[&[&str]] = &[&["tlkUUID", "srcIdentity"], &["viewName", "encryptedData"]];
-const CARD_KEYS: &[&str] = &["CardNumber", "FPANHash", "PrimaryAccountIdentifier", "CardSecurityCode"];
+const CARD_KEYS: &[&str] = &[
+    "CardNumber",
+    "FPANHash",
+    "PrimaryAccountIdentifier",
+    "CardSecurityCode",
+];
 
 /// What an item's payload is.
 #[derive(Debug, Clone, PartialEq)]
@@ -412,7 +416,9 @@ pub fn classify_item(item: &plist::Value) -> Payload {
 pub fn is_credential(domain: &str, title: &str) -> bool {
     for tag in [domain, title] {
         let t = tag.trim().to_lowercase();
-        if t.starts_with("pcs ") || t.starts_with("pcs-") || t.starts_with("website metadata")
+        if t.starts_with("pcs ")
+            || t.starts_with("pcs-")
+            || t.starts_with("website metadata")
             || t.contains("com.apple.")
         {
             return false;
@@ -443,14 +449,14 @@ pub fn credentials_from_items(items: &[(String, plist::Value)]) -> Vec<Credentia
         let domain = {
             let d = ["srvr", "server", "domain", "url", "svce"]
                 .iter()
-                .find_map(|k| dict.get(*k).and_then(|v| v.as_string()))
+                .find_map(|k| dict.get(k).and_then(|v| v.as_string()))
                 .unwrap_or("")
                 .to_string();
             d
         };
         let username = ["acct", "username", "user"]
             .iter()
-            .find_map(|k| dict.get(*k).and_then(|v| v.as_string()))
+            .find_map(|k| dict.get(k).and_then(|v| v.as_string()))
             .unwrap_or("")
             .to_string();
         let label = get_str("labl");
@@ -472,23 +478,18 @@ pub fn credentials_from_items(items: &[(String, plist::Value)]) -> Vec<Credentia
                 let mut last_used = 0.0;
                 if let Some(d) = d {
                     for key in SIDECAR_KEEP {
-                        if let Some(value) = d.get(*key) {
+                        if let Some(value) = d.get(key) {
                             match *key {
-                                "title" => {
-                                    title = value.as_string().unwrap_or("").to_string()
-                                }
-                                "notes" => {
-                                    notes = value.as_string().unwrap_or("").to_string()
-                                }
-                                "totp" => {
-                                    totp = crate::totp::uri_from_sidecar(Some(value))
-                                }
+                                "title" => title = value.as_string().unwrap_or("").to_string(),
+                                "notes" => notes = value.as_string().unwrap_or("").to_string(),
+                                "totp" => totp = crate::totp::uri_from_sidecar(Some(value)),
                                 "ctxt" => last_used = sidecar_last_used(value),
                                 _ => {}
                             }
                         }
                     }
                 }
+                let _ = SIDECAR_LABEL_PREFIX;
                 sidecars.push((
                     key,
                     Sidecar {
@@ -576,7 +577,7 @@ struct Sidecar {
 }
 
 /// Look up a field in a decoded message, for the callers that need the raw shape.
-pub fn field<'a>(fields: &'a Fields, n: u32) -> Option<&'a Value> {
+pub fn field(fields: &Fields, n: u32) -> Option<&Value> {
     fields.get(n)
 }
 

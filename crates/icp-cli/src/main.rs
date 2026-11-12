@@ -46,7 +46,7 @@ fn open() -> Result<Engine, String> {
 fn cmd_sync(_args: &[String]) -> Result<(), String> {
     let mut engine = open()?;
     let creds = engine
-        .sync(&icp_core::ckks::KEYCHAIN_ZONES)
+        .sync(icp_core::ckks::KEYCHAIN_ZONES)
         .map_err(|e| e.to_string())?;
     icp_core::vault::save(&creds).map_err(|e| e.to_string())?;
     println!("{} credentials", creds.len());
@@ -84,7 +84,7 @@ fn cmd_add(args: &[String]) -> Result<(), String> {
 fn cmd_dump() -> Result<(), String> {
     let mut engine = open()?;
     let creds = engine
-        .sync(&icp_core::ckks::KEYCHAIN_ZONES)
+        .sync(icp_core::ckks::KEYCHAIN_ZONES)
         .map_err(|e| e.to_string())?;
     let mut lines: Vec<String> = creds
         .iter()
@@ -120,12 +120,22 @@ fn cmd_delete(args: &[String]) -> Result<(), String> {
 
 fn cmd_check() -> Result<(), String> {
     let mut engine = open()?;
-    println!("peer:      {}", engine.peer_id().map_err(|e| e.to_string())?);
-    println!("user id:   {}", engine.user_id().map_err(|e| e.to_string())?);
+    println!(
+        "peer:      {}",
+        engine.peer_id().map_err(|e| e.to_string())?
+    );
+    println!(
+        "user id:   {}",
+        engine.user_id().map_err(|e| e.to_string())?
+    );
     let (tlks, synckeys) = engine.fetch_view_keys().map_err(|e| e.to_string())?;
-    println!("view keys: {} TLKs, {} synckeys", tlks.len(), synckeys.len());
+    println!(
+        "view keys: {} TLKs, {} synckeys",
+        tlks.len(),
+        synckeys.len()
+    );
     let records = engine
-        .fetch_zones(&icp_core::ckks::KEYCHAIN_ZONES)
+        .fetch_zones(icp_core::ckks::KEYCHAIN_ZONES)
         .map_err(|e| e.to_string())?;
     let mut by_type: std::collections::BTreeMap<&str, usize> = Default::default();
     for r in &records {
@@ -133,7 +143,7 @@ fn cmd_check() -> Result<(), String> {
     }
     println!("records:   {by_type:?}");
     let creds = engine
-        .sync(&icp_core::ckks::KEYCHAIN_ZONES)
+        .sync(icp_core::ckks::KEYCHAIN_ZONES)
         .map_err(|e| e.to_string())?;
     println!("credentials: {}", creds.len());
     let with_code = creds.iter().filter(|c| !c.totp.is_empty()).count();
@@ -152,7 +162,8 @@ fn cmd_check() -> Result<(), String> {
 
 /// Used by the tests: a stable summary of a credential list.
 pub fn summarize(creds: &[Credential]) -> String {
-    creds.iter()
+    creds
+        .iter()
         .map(|c| format!("{}|{}", c.domain, c.username))
         .collect::<Vec<_>>()
         .join("\n")

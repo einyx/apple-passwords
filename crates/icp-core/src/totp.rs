@@ -39,7 +39,10 @@ pub fn uri_from_sidecar(block: Option<&plist::Value>) -> String {
     let Some(d) = block.as_dictionary() else {
         return String::new();
     };
-    let secret = d.get("secret").and_then(|v| v.as_data()).unwrap_or_default();
+    let secret = d
+        .get("secret")
+        .and_then(|v| v.as_data())
+        .unwrap_or_default();
     if secret.is_empty() {
         return String::new();
     }
@@ -68,13 +71,18 @@ pub fn uri_from_sidecar(block: Option<&plist::Value>) -> String {
         ("secret".to_string(), b32.trim_end_matches('=').to_string()),
         (
             "algorithm".to_string(),
-            algorithm(d.get("algorithm").and_then(|v| v.as_string()).unwrap_or("SHA1")).to_string(),
+            algorithm(
+                d.get("algorithm")
+                    .and_then(|v| v.as_string())
+                    .unwrap_or("SHA1"),
+            )
+            .to_string(),
         ),
+        ("digits".to_string(), number(d.get("digits"), 6).to_string()),
         (
-            "digits".to_string(),
-            number(d.get("digits"), 6).to_string(),
+            "period".to_string(),
+            number(d.get("period"), 30).to_string(),
         ),
-        ("period".to_string(), number(d.get("period"), 30).to_string()),
     ];
     if !issuer.is_empty() {
         params.push(("issuer".to_string(), issuer));
@@ -110,7 +118,7 @@ pub struct Code {
 
 /// Generate the code for an `otpauth://totp/...` URI.
 pub fn generate(uri: &str, at: Option<f64>) -> Option<Code> {
-    let (label, query) = uri.split_once("?")?;
+    let (_label, query) = uri.split_once("?")?;
     let mut secret = String::new();
     let mut algorithm_name = "SHA1".to_string();
     let mut digits = 6u32;
@@ -246,7 +254,10 @@ mod tests {
     fn base32_roundtrip() {
         // "12345678901234567890" in base32.
         let b32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-        assert_eq!(base32_decode(b32).unwrap(), b"12345678901234567890".to_vec());
+        assert_eq!(
+            base32_decode(b32).unwrap(),
+            b"12345678901234567890".to_vec()
+        );
     }
 
     #[test]

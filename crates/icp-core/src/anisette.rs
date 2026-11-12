@@ -91,14 +91,10 @@ impl Anisette {
     pub fn client_info(&mut self) -> Result<&ClientInfo> {
         if self.info.is_none() {
             let url = self.url("/v3/client_info");
-            let resp = self
-                .client
-                .get(&url)
-                .send()
-                .map_err(|e| Error::Network {
-                    url: url.clone(),
-                    source: e,
-                })?;
+            let resp = self.client.get(&url).send().map_err(|e| Error::Network {
+                url: url.clone(),
+                source: e,
+            })?;
             if !resp.status().is_success() {
                 return Err(Error::BadResponse { url });
             }
@@ -129,14 +125,10 @@ impl Anisette {
     /// The machine identity headers.
     pub fn headers(&self) -> Result<HashMap<String, String>> {
         let url = self.url("");
-        let resp = self
-            .client
-            .get(&url)
-            .send()
-            .map_err(|e| Error::Network {
-                url: url.clone(),
-                source: e,
-            })?;
+        let resp = self.client.get(&url).send().map_err(|e| Error::Network {
+            url: url.clone(),
+            source: e,
+        })?;
         if !resp.status().is_success() {
             return Err(Error::BadResponse { url });
         }

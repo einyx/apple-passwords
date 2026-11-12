@@ -23,20 +23,21 @@ pub fn expand_ies(data: &[u8]) -> Result<IesCiphertext> {
     let root = expand(data)?;
     let dict = match root {
         plist::Value::Dictionary(d) => d,
-        _ => return Err(crate::error::Error::Crypto("not an archived dictionary".into())),
+        _ => {
+            return Err(crate::error::Error::Crypto(
+                "not an archived dictionary".into(),
+            ))
+        }
     };
     let get = |key: &str| -> Option<Vec<u8>> {
-        dict.get(key)
-            .and_then(|v| v.as_data().map(|d| d.to_vec()))
+        dict.get(key).and_then(|v| v.as_data().map(|d| d.to_vec()))
     };
     let eph = get("SFEphemeralSenderPublicKeyExternaRepresentation")
         .ok_or_else(|| crate::error::Error::Crypto("no ephemeral sender key".into()))?;
-    let ct = get("SFCiphertext").ok_or_else(|| {
-        crate::error::Error::Crypto("no SFCiphertext".into())
-    })?;
-    let tag = get("SFIESAuthenticationCode").ok_or_else(|| {
-        crate::error::Error::Crypto("no SFIESAuthenticationCode".into())
-    })?;
+    let ct =
+        get("SFCiphertext").ok_or_else(|| crate::error::Error::Crypto("no SFCiphertext".into()))?;
+    let tag = get("SFIESAuthenticationCode")
+        .ok_or_else(|| crate::error::Error::Crypto("no SFIESAuthenticationCode".into()))?;
     // SecurityFoundation appends 97+16 bytes of junk to the stored ciphertext.
     let ct = if ct.len() > 97 + 16 {
         ct[..ct.len() - (97 + 16)].to_vec()
@@ -73,7 +74,10 @@ pub fn expand(data: &[u8]) -> Result<plist::Value> {
         .unwrap_or(plist::Value::Dictionary(Default::default()));
     match top {
         plist::Value::Dictionary(ref d) if d.contains_key("root") => {
-            let root = d.get("root").cloned().unwrap_or(plist::Value::Boolean(false));
+            let root = d
+                .get("root")
+                .cloned()
+                .unwrap_or(plist::Value::Boolean(false));
             Ok(resolve(&root))
         }
         other => Ok(resolve(&other)),
@@ -114,11 +118,9 @@ fn resolve_value(node: &plist::Value, objects: &[plist::Value]) -> plist::Value 
             }
             plist::Value::Dictionary(out)
         }
-        plist::Value::Array(a) => plist::Value::Array(
-            a.iter()
-                .map(|v| resolve_value(v, objects))
-                .collect(),
-        ),
+        plist::Value::Array(a) => {
+            plist::Value::Array(a.iter().map(|v| resolve_value(v, objects)).collect())
+        }
         other => other.clone(),
     }
 }

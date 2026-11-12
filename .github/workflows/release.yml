@@ -38,8 +38,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libgtk-4-dev libadwaita-1-dev libssl-dev pkg-config \
-            dpkg-dev rpm
+            libgtk-4-dev libadwaita-1-dev libssl-dev pkg-config dpkg-dev rpm
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
@@ -55,8 +54,9 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           mkdir -p ~/rpmbuild/SOURCES ~/rpmbuild/SPECS ~/rpmbuild/BUILD ~/rpmbuild/RPMS
-          tar czf ~/rpmbuild/SOURCES/apple-passwords-${version}.tar.gz \
-            --transform "s,^,apple-passwords-${version}/," .
+          # git archive, so the tarball holds the sources and not the build tree.
+          git archive --format=tar.gz --prefix="apple-passwords-${version}/" \
+            -o ~/rpmbuild/SOURCES/apple-passwords-${version}.tar.gz HEAD
           cp packaging/apple-passwords.spec ~/rpmbuild/SPECS/
           # --nodeps: the build requirements are the apt packages above; rpm on
           # Ubuntu does not know their RPM names.
@@ -68,9 +68,9 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           mkdir -p dist/apple-passwords_${version}_${{ matrix.arch }}
-          cp target/release/icp-gui target/release/icp-cli \
+          cp target/release/icp-gui target/release/icp-cli target/release/icp-host \
             dist/apple-passwords_${version}_${{ matrix.arch }}/
-          cp README.md dist/apple-passwords_${version}_${{ matrix.arch }}/
+          cp README.md LICENSE dist/apple-passwords_${version}_${{ matrix.arch }}/
           cp crates/icp-gui/icons/org.icp.passwords.svg \
             dist/apple-passwords_${version}_${{ matrix.arch }}/
           tar czf apple-passwords_${version}_${{ matrix.arch }}.tar.gz \
@@ -86,12 +86,18 @@ jobs:
   flatpak:
     name: flatpak
     runs-on: ubuntu-24.04
-    container:
-      image: ghcr.io/flathub/flatpak-builder:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build the Flatpak
+      - name: Install flatpak-builder
         run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak-builder flatpak
+      - name: Build
+        run: |
+          flatpak install --user -y flathub \
+            org.gnome.Platform//47 \
+            org.gnome.Sdk//47 \
+            org.fre.Sdk.Extension.rust-stable//24.08
           flatpak-builder --user --install --force-clean --disable-roofs-fuse \
             --repo=flatpak-repo packaging/org.icp.passwords.yml
           flatpak build-bundle flatpak-repo build.flatpak org.icp.passwords

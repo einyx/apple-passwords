@@ -64,7 +64,11 @@ pub enum FieldValue {
     Str(String),
     Int(i64),
     /// A reference to another record (the keychain's `parentkeyref`).
-    Reference { record: String, zone: String, user: String },
+    Reference {
+        record: String,
+        zone: String,
+        user: String,
+    },
 }
 
 impl FieldValue {
@@ -168,16 +172,13 @@ pub fn build_field_value(value: &FieldValue) -> Vec<u8> {
         FieldValue::Int(i) => {
             w.uint64(1, Some(VALUE_TYPE_INT64)).int64(4, Some(*i));
         }
-        FieldValue::Reference {
-            record,
-            zone,
-            user,
-        } => {
+        FieldValue::Reference { record, zone, user } => {
             let mut refw = Writer::new();
             refw.uint64(1, Some(REFERENCE_TYPE_VALIDATING))
                 .message(2, Some(&build_record_identifier(record, zone, user)));
             let reference = refw.finish();
-            w.uint64(1, Some(VALUE_TYPE_REFERENCE)).message(9, Some(&reference));
+            w.uint64(1, Some(VALUE_TYPE_REFERENCE))
+                .message(9, Some(&reference));
         }
     }
     w.finish()
@@ -204,8 +205,11 @@ pub fn build_record(
     let mut typew = Writer::new();
     typew.string(1, Some(record_type));
     let mut w = Writer::new();
-    w.message(2, Some(&build_record_identifier(record_name, zone, user_id)))
-        .message(3, Some(typew.as_slice()));
+    w.message(
+        2,
+        Some(&build_record_identifier(record_name, zone, user_id)),
+    )
+    .message(3, Some(typew.as_slice()));
     for (name, value) in fields {
         w.message(7, Some(&build_record_field(name, value)));
     }
@@ -246,15 +250,21 @@ pub fn build_record_delete_request(
     etag: Option<&str>,
 ) -> Vec<u8> {
     let mut w = Writer::new();
-    w.message(1, Some(&build_record_identifier(record_name, zone, user_id)))
-        .string(2, etag);
+    w.message(
+        1,
+        Some(&build_record_identifier(record_name, zone, user_id)),
+    )
+    .string(2, etag);
     w.finish()
 }
 
 /// A `CKDPRecordRetrieveRequest` - fetch one record by name.
 pub fn build_record_retrieve_request(record_name: &str, zone: &str, user_id: &str) -> Vec<u8> {
     let mut w = Writer::new();
-    w.message(1, Some(&build_record_identifier(record_name, zone, user_id)));
+    w.message(
+        1,
+        Some(&build_record_identifier(record_name, zone, user_id)),
+    );
     w.finish()
 }
 
@@ -280,8 +290,10 @@ pub struct CkDate {
 /// Parse a record out of a `CKDPRecord` message.
 pub fn parse_record(raw: &[u8]) -> Result<CloudKitRecord> {
     let f = Fields::decode(raw)?;
-    let mut record = CloudKitRecord::default();
-    record.etag = f.string(1).unwrap_or_default();
+    let mut record = CloudKitRecord {
+        etag: f.string(1).unwrap_or_default(),
+        ..Default::default()
+    };
 
     if let Some(id) = f.bytes(2) {
         let idf = Fields::decode(id)?;
@@ -354,12 +366,18 @@ fn parse_field_value(raw: &[u8]) -> Result<Option<FieldValue>> {
     Ok(None)
 }
 
+/// The records of a changes response, with the continuation token and the status.
+#[allow(clippy::type_complexity)]
+pub type ChangesPage = (Vec<CloudKitRecord>, Option<Vec<u8>>, Option<u64>);
+
 /// Parse a `CKDPRecordRetrieveChangesResponse` into its records.
-pub fn parse_retrieve_changes_response(raw: &[u8]) -> Result<(Vec<CloudKitRecord>, Option<Vec<u8>>, Option<u64>)> {
+pub fn parse_retrieve_changes_response(raw: &[u8]) -> Result<ChangesPage> {
     let f = Fields::decode(raw)?;
     let mut records = Vec::new();
     for change in f.get_all(1) {
-        let Value::Bytes(bytes) = change else { continue };
+        let Value::Bytes(bytes) = change else {
+            continue;
+        };
         let cf = Fields::decode(bytes)?;
         if let Some(Value::Bytes(rec)) = cf.get(5) {
             records.push(parse_record(rec)?);
@@ -428,7 +446,14 @@ mod tests {
 
     #[test]
     fn save_request_layout() {
-        let raw = build_record_save_request(b"rec", true, SAVE_SEMANTICS_FAIL_IF_EXISTS, None, None, None);
+        let raw = build_record_save_request(
+            b"rec",
+            true,
+            SAVE_SEMANTICS_FAIL_IF_EXISTS,
+            None,
+            None,
+            None,
+        );
         let f = Fields::decode(&raw).unwrap();
         assert_eq!(f.field_numbers(), vec![1, 2, 6]);
         assert_eq!(f.uint(2), Some(1));

@@ -104,6 +104,16 @@ impl Anisette {
         Ok(self.info.as_ref().unwrap())
     }
 
+    /// The client identity string, as the server sends it.
+    pub fn client_info_string(&mut self) -> Result<String> {
+        Ok(self.client_info()?.client_info.clone())
+    }
+
+    /// The user agent the server's identity comes with.
+    pub fn user_agent(&mut self) -> Result<String> {
+        Ok(self.client_info()?.user_agent.clone())
+    }
+
     /// The client identity string Apple's servers want
     /// (`<platform> <com.apple.service/version>`).
     pub fn platform(&mut self) -> Result<String> {

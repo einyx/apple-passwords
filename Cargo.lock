@@ -1354,13 +1354,17 @@ dependencies = [
 name = "icp-core"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "aes-gcm",
  "aes-siv",
  "base64 0.22.1",
+ "cbc",
  "crypto_secretbox",
  "flate2",
  "hex",
  "hmac",
+ "num-bigint",
+ "num-traits",
  "p384",
  "plist",
  "rand 0.8.8",

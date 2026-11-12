@@ -7,6 +7,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
 aes-gcm = "0.10"
 aes-siv = "0.7"
 base64.workspace = true
@@ -16,6 +18,8 @@ hex.workspace = true
 hmac.workspace = true
 plist.workspace = true
 p384 = { version = "0.13", features = ["ecdsa", "ecdh"] }
+num-bigint = "0.4"
+num-traits = "0.2"
 rand.workspace = true
 secret-service = { version = "3", features = ["rt-async-io-crypto-rust"] }
 zbus = { version = "3", default-features = false, features = ["async-io"] }

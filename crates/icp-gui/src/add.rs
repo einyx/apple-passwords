@@ -18,7 +18,7 @@ pub fn open(parent: &adw::ApplicationWindow, state: Rc<AppState>, existing: Opti
         .transient_for(parent)
         .title(if editing { "Edit login" } else { "Add a login" })
         .build();
-    dialog.set_default_size(440, if editing { 300 } else { 380 });
+    dialog.set_default_size(400, if editing { 280 } else { 360 });
 
     let toolbar = adw::ToolbarView::new();
     let header = adw::HeaderBar::new();
@@ -53,6 +53,7 @@ pub fn open(parent: &adw::ApplicationWindow, state: Rc<AppState>, existing: Opti
     toolbar.add_top_bar(&header);
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    content.add_css_class("background");
     content.set_margin_top(18);
     content.set_margin_bottom(18);
     content.set_margin_start(18);

@@ -65,8 +65,8 @@ pub fn on_activate(app: &adw::Application) {
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Apple Passwords")
-        .default_width(1100)
-        .default_height(680)
+        .default_width(840)
+        .default_height(540)
         .build();
 
     // --- the header ------------------------------------------------------
@@ -93,39 +93,38 @@ pub fn on_activate(app: &adw::Application) {
 
     // --- the three panes --------------------------------------------------
     let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    body.add_css_class("background");
     body.set_vexpand(true);
 
     // The category sidebar.
     let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 6);
     sidebar.add_css_class("sidebar");
-    sidebar.set_size_request(250, -1);
-    sidebar.set_margin_top(10);
-    sidebar.set_margin_bottom(10);
-    sidebar.set_margin_start(8);
+    sidebar.set_size_request(186, -1);
+    sidebar.set_margin_top(8);
+    sidebar.set_margin_bottom(8);
+    sidebar.set_margin_start(6);
     sidebar.set_margin_end(0);
-    let categories = gtk::Grid::new();
-    categories.set_column_spacing(6);
-    categories.set_row_spacing(6);
-    categories.set_margin_start(8);
-    categories.set_margin_end(8);
+    let categories = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    categories.set_margin_start(6);
+    categories.set_margin_end(6);
     sidebar.append(&categories);
 
     // The list of logins.
     let middle = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    middle.set_size_request(320, -1);
+    middle.set_size_request(258, -1);
     let search = gtk::SearchEntry::new();
     search.set_hexpand(true);
     search.set_placeholder_text(Some("Search"));
-    search.set_margin_top(8);
-    search.set_margin_bottom(6);
-    search.set_margin_start(10);
-    search.set_margin_end(10);
+    search.set_margin_top(6);
+    search.set_margin_bottom(4);
+    search.set_margin_start(8);
+    search.set_margin_end(8);
     middle.append(&search);
     let list_box = gtk::ListBox::new();
-    list_box.set_margin_top(4);
-    list_box.set_margin_bottom(10);
-    list_box.set_margin_start(6);
-    list_box.set_margin_end(6);
+    list_box.set_margin_top(2);
+    list_box.set_margin_bottom(8);
+    list_box.set_margin_start(4);
+    list_box.set_margin_end(4);
     let scroller = gtk::ScrolledWindow::new();
     scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
     scroller.set_vexpand(true);
@@ -134,10 +133,10 @@ pub fn on_activate(app: &adw::Application) {
 
     // The detail.
     let detail = gtk::Box::new(gtk::Orientation::Vertical, 14);
-    detail.set_margin_top(24);
-    detail.set_margin_bottom(24);
-    detail.set_margin_start(24);
-    detail.set_margin_end(24);
+    detail.set_margin_top(16);
+    detail.set_margin_bottom(16);
+    detail.set_margin_start(16);
+    detail.set_margin_end(16);
     let detail_scroller = gtk::ScrolledWindow::new();
     detail_scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
     detail_scroller.set_vexpand(true);
@@ -238,7 +237,7 @@ pub fn on_activate(app: &adw::Application) {
 
 /// Draw the category cards.
 fn rebuild_categories(
-    grid: &gtk::Grid,
+    grid: &gtk::Box,
     state: &Rc<AppState>,
     title: &gtk::Label,
     rebuild_list: &Rc<dyn Fn()>,
@@ -262,7 +261,8 @@ fn rebuild_categories(
                 rebuild_list();
             }
         });
-        grid.attach(&card, (index % 2) as i32, (index / 2) as i32, 1, 1);
+        let _ = index;
+        grid.append(&card);
     }
     title.set_text(current.title());
 }

@@ -514,6 +514,7 @@ impl<'a> EscrowRecovery<'a> {
 }
 
 /// The recovered identity of the previous device.
+#[derive(Clone)]
 pub struct RecoveredIdentity {
     pub peer_id: String,
     pub signing_key: PeerKey,

@@ -94,9 +94,9 @@ jobs:
           sudo apt-get install -y flatpak-builder flatpak
       - name: Build
         run: |
-          flatpak remote-add --user --if-not-exists flathub \
+          sudo flatpak remote-add --if-not-exists flathub \
             https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub \
+          sudo flatpak install -y flathub \
             org.freedesktop.Platform//26.08 \
             org.freedesktop.Sdk//26.08 \
             org.freedesktop.Sdk.Extension.rust-stable//26.08

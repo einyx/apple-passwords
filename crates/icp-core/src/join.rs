@@ -9,6 +9,7 @@
 //! confirmation.
 
 use p384::SecretKey;
+use serde_json::Value;
 
 use crate::anisette::Anisette;
 use crate::cuttlefish::{self, SignedBlob};
@@ -17,13 +18,41 @@ use crate::error::Result;
 use crate::escrow::{self, bottle::OTBottle, RecoveredIdentity};
 use crate::octagon::{self, PeerKey, PeerKeySet};
 
+/// The new peer's identity, as it is stored in the session.
+#[derive(Debug, Clone)]
+pub struct PeerIdentity {
+    pub peer_id: String,
+    pub keys: PeerKeySet,
+    pub permanent_data: Vec<u8>,
+    pub permanent_sig: Vec<u8>,
+}
+
+impl PeerIdentity {
+    /// Generate a fresh identity and its permanent info.
+    pub fn generate(
+        machine_id: &str,
+        model_id: &str,
+        epoch: i64,
+        creation_time: i64,
+    ) -> Result<PeerIdentity> {
+        let keys = PeerKeySet::generate();
+        let info =
+            octagon::build_permanent_info(&keys, machine_id, model_id, epoch, creation_time)?;
+        Ok(PeerIdentity {
+            peer_id: info.peer_id.clone(),
+            keys,
+            permanent_data: hex::decode(&info.data)?,
+            permanent_sig: hex::decode(&info.sig)?,
+        })
+    }
+}
+
 /// What a join needs.
 pub struct Join {
     /// The recovered identity of the previous device.
     pub sponsor: RecoveredIdentity,
     /// The new peer's identity.
-    pub peer_id: String,
-    pub keys: PeerKeySet,
+    pub peer: PeerIdentity,
     /// The sponsor's peers this one should trust.
     pub included_peer_ids: Vec<String>,
     /// The clocks to join with.
@@ -75,13 +104,11 @@ pub fn parse_bottle(raw: &[u8]) -> Result<OTBottle> {
 /// join time, as the real client does.
 pub fn build_join_request(
     join: &Join,
-    permanent_data: &[u8],
-    permanent_sig: &[u8],
     serial: &str,
     restore_point: Option<&str>,
-) -> Vec<u8> {
+) -> Result<Vec<u8>> {
     let stable = octagon::build_stable_info(
-        &join.keys,
+        &join.peer.keys,
         join.stable_clock,
         octagon::FROZEN_POLICY_VERSION,
         octagon::FROZEN_POLICY_HASH,
@@ -91,32 +118,38 @@ pub fn build_join_request(
         serial,
         octagon::PEER_OS_VERSION,
         octagon::UCV_FOLLOWING,
-    )
-    .expect("the stable info is signed");
+    )?;
     let mut included = join.included_peer_ids.clone();
-    if !included.contains(&join.peer_id) {
-        included.push(join.peer_id.clone());
+    if !included.contains(&join.peer.peer_id) {
+        included.push(join.peer.peer_id.clone());
     }
-    let dynamic = octagon::build_dynamic_info(&join.keys, join.dynamic_clock, &included)
-        .expect("the dynamic info is signed");
+    let dynamic = octagon::build_dynamic_info(&join.peer.keys, join.dynamic_clock, &included)?;
 
     let peer = cuttlefish::CuttlefishPeer {
-        peer_id: join.peer_id.clone(),
+        peer_id: join.peer.peer_id.clone(),
         permanent: SignedBlob {
-            info: permanent_data.to_vec(),
-            sig: permanent_sig.to_vec(),
+            info: join.peer.permanent_data.clone(),
+            sig: join.peer.permanent_sig.clone(),
         },
         stable: SignedBlob {
-            info: hex::decode(&stable.data).unwrap_or_default(),
-            sig: hex::decode(&stable.sig).unwrap_or_default(),
+            info: hex::decode(&stable.data)?,
+            sig: hex::decode(&stable.sig)?,
         },
         dynamic: SignedBlob {
-            info: hex::decode(&dynamic.data).unwrap_or_default(),
-            sig: hex::decode(&dynamic.sig).unwrap_or_default(),
+            info: hex::decode(&dynamic.data)?,
+            sig: hex::decode(&dynamic.sig)?,
         },
         voucher: None,
     };
-    cuttlefish::encode_join_with_voucher_request(&peer.encode(), restore_point)
+    Ok(cuttlefish::encode_join_with_voucher_request(
+        &peer.encode(),
+        restore_point,
+    ))
+}
+
+/// The voucher the sponsor signs for the new peer.
+pub fn make_voucher(sponsor: &RecoveredIdentity, beneficiary_peer_id: &str) -> Result<SignedBlob> {
+    sponsor.make_voucher(beneficiary_peer_id, 1)
 }
 
 /// The sponsor's trusted peers, and the clocks to join with, from the trust state.
@@ -184,3 +217,6 @@ pub fn peer_key_from_x963(blob: &[u8]) -> Result<PeerKey> {
 pub fn secret_key_from_x963(blob: &[u8]) -> Result<SecretKey> {
     crate::crypto::load_private_x963(blob)
 }
+
+/// The session's octagon state, as it is stored.
+pub type OctagonState = Value;

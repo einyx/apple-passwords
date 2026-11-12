@@ -17,6 +17,7 @@ fn main() {
         "update" => cmd_update(&args),
         "delete" => cmd_delete(&args),
         "login" => cmd_login(&args),
+        "join" => cmd_join(&args),
         _ => {
             usage();
             Ok(())
@@ -178,6 +179,96 @@ fn cmd_login(_args: &[String]) -> Result<(), String> {
     icp_core::session::save(&record).map_err(|e| e.to_string())?;
     println!("Signed in as {username}.");
     println!("The keychain trust still has to be joined - run `icp login` again for that.");
+    Ok(())
+}
+
+fn cmd_join(_args: &[String]) -> Result<(), String> {
+    use icp_core::joinflow::ask;
+    use icp_core::login::ask_secret as secret;
+    use icp_core::{anisette::Anisette, device::Device, engine::Engine, session};
+
+    let record = session::load()
+        .map_err(|e| e.to_string())?
+        .ok_or("not signed in - run `icp login` first")?;
+    let username = record
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let pet = record
+        .get("pet")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let escrow_host = record
+        .get("webservices")
+        .and_then(|w| w.get("keychainsync"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if pet.is_empty() {
+        return Err("the session has no token - run `icp login` again".into());
+    }
+    if escrow_host.is_empty() {
+        return Err("the session has no escrow service - run `icp login` again".into());
+    }
+
+    let device = Device::load_or_create().map_err(|e| e.to_string())?;
+    let url =
+        std::env::var("ICP_ANISETTE_URL").unwrap_or_else(|_| "http://127.0.0.1:6969".to_string());
+    let mut anisette = Anisette::new(&url).map_err(|e| e.to_string())?;
+
+    println!("Looking for the escrow records of this account...");
+    let bottles =
+        icp_core::join::list_bottles(&escrow_host, &username, &pet, &device, &mut anisette)
+            .map_err(|e| e.to_string())?;
+    if bottles.is_empty() {
+        return Err("no escrow records were found for this account".into());
+    }
+    for (label, meta) in &bottles {
+        let name = meta
+            .as_dictionary()
+            .and_then(|d| d.get("ClientMetadata"))
+            .and_then(|v| v.as_dictionary())
+            .map(|d| {
+                d.get("device_name")
+                    .and_then(|v| v.as_string())
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .unwrap_or_default();
+        println!("  {label}  {name}");
+    }
+
+    let passcode = secret("Passcode of the device to recover: ");
+    if passcode.is_empty() {
+        return Err("no passcode given".into());
+    }
+    println!("This spends one of the escrow service's ten attempts. The tenth wrong passcode");
+    println!("destroys the record forever.");
+    let confirm = ask("Type YES to continue: ");
+    if confirm != "YES" {
+        return Err("aborted - no attempt spent".into());
+    }
+
+    let mut client = Engine::open(Some(&url)).map_err(|e| e.to_string())?;
+    let bottle_raw = bottles
+        .first()
+        .map(|(label, _)| label.clone())
+        .unwrap_or_default();
+    let peer_id = icp_core::joinflow::run(
+        &mut client,
+        &mut anisette,
+        &device,
+        &username,
+        &pet,
+        &escrow_host,
+        bottle_raw.as_bytes(),
+        &passcode,
+        true,
+    )
+    .map_err(|e| e.to_string())?;
+    println!("Joined the keychain as {peer_id}.");
     Ok(())
 }
 

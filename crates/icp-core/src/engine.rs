@@ -170,6 +170,39 @@ impl Engine {
         Ok(out)
     }
 
+    /// The account's numeric id.
+    pub fn session_id(&self) -> String {
+        self.session
+            .get("mme")
+            .and_then(|m| m.get("dsid"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    }
+
+    /// Join the trust circle with a voucher.
+    pub fn join_with_voucher(&mut self, request: &[u8]) -> Result<()> {
+        self.transport
+            .invoke("joinWithVoucher", request, &mut self.anisette, &self.device)?;
+        Ok(())
+    }
+
+    /// The trust state: the peers and the sync token.
+    pub fn fetch_changes(
+        &mut self,
+        sync_token: Option<&str>,
+    ) -> Result<crate::cuttlefish::FetchChanges> {
+        let mut request = crate::proto::Writer::new();
+        request.string(1, sync_token);
+        let raw = self.transport.invoke(
+            "fetchChanges",
+            &request.finish(),
+            &mut self.anisette,
+            &self.device,
+        )?;
+        crate::cuttlefish::parse_fetch_changes_response(&raw)
+    }
+
     /// Fetch the keychain and decrypt it into credentials.
     pub fn sync(&mut self, zones: &[&str]) -> Result<Vec<Credential>> {
         let (tlks, view_synckeys) = self.fetch_view_keys()?;

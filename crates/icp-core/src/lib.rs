@@ -18,6 +18,7 @@ pub mod escrow;
 pub mod gsa;
 pub mod icloud;
 pub mod join;
+pub mod joinflow;
 pub mod keychain;
 pub mod login;
 pub mod nska;

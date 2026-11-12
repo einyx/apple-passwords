@@ -39,7 +39,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libgtk-4-dev libadwaita-1-dev libssl-dev pkg-config \
-            dpkg-dev rpm-build
+            dpkg-dev rpm
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
@@ -58,7 +58,9 @@ jobs:
           tar czf ~/rpmbuild/SOURCES/apple-passwords-${version}.tar.gz \
             --transform "s,^,apple-passwords-${version}/," .
           cp packaging/apple-passwords.spec ~/rpmbuild/SPECS/
-          rpmbuild --define "_topdir ~/rpmbuild" --define "_version $version" \
+          # --nodeps: the build requirements are the apt packages above; rpm on
+          # Ubuntu does not know their RPM names.
+          rpmbuild --nodeps --define "_topdir ~/rpmbuild" --define "_version $version" \
             --define "_arch ${{ matrix.rpm-arch }}" \
             -bb ~/rpmbuild/SPECS/apple-passwords.spec
           find ~/rpmbuild/RPMS -name '*.rpm' -exec cp {} . \;

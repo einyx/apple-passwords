@@ -51,7 +51,8 @@ cargo test --release --locked
 %{_bindir}/icp-cli
 %{_datadir}/icons/hicolor/scalable/apps/org.icp.passwords.svg
 %{_datadir}/applications/org.icp.passwords.desktop
-%doc %{name}/README.md
+%{_datadir}/doc/%{name}/README.md
+%{_datadir}/doc/%{name}/LICENSE
 
 %changelog
 * Thu Nov 12 2026 einyx <einyx@users.noreply.github.com> - 0.1.0-1

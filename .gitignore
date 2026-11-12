@@ -1,3 +1,6 @@
 /target
 **/*.rs.bk
 *.pdb
+staging
+build.flatpak
+flatpak-repo

@@ -97,11 +97,16 @@ jobs:
           sudo flatpak remote-add --if-not-exists flathub \
             https://dl.flathub.org/repo/flathub.flatpakrepo
           sudo flatpak install -y flathub \
-            org.freedesktop.Platform//26.08 \
-            org.freedesktop.Sdk//26.08 \
-            org.freedesktop.Sdk.Extension.rust-stable//26.08
-          flatpak-builder --user --install --force-clean \
-            --repo=flatpak-repo packaging/org.icp.passwords.json
+            org.gnome.Platform//49 \
+            org.gnome.Sdk//49
+          # The binaries are built on the runner and the Flatpak packages them:
+          # the Rust SDK extension cannot be resolved by the Flatpak builder.
+          cargo build --release --locked --workspace
+          mkdir -p staging
+          cp target/release/icp-gui target/release/icp-cli target/release/icp-host staging/
+          flatpak-builder --force-clean --state-dir=/tmp/fpstate \
+            --repo=flatpak-repo build-flatpak packaging/org.icp.passwords.json
+          flatpak build-bundle flatpak-repo build.flatpak org.icp.passwords
           flatpak build-bundle flatpak-repo build.flatpak org.icp.passwords
       - uses: actions/upload-artifact@v4
         with:

@@ -82,7 +82,7 @@ jobs:
           name: packages-${{ matrix.arch }}
           path: |
             apple-passwords_*.deb
-            apple-passwords_*.rpm
+            apple-passwords*.rpm
             apple-passwords_*.tar.gz
 
   flatpak:

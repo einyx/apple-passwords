@@ -1378,6 +1378,7 @@ dependencies = [
  "crypto_secretbox",
  "flate2",
  "hex",
+ "hkdf",
  "hmac",
  "num-bigint",
  "num-traits",

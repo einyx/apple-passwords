@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 aes = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
+hkdf = "0.12"
 aes-gcm = "0.10"
 aes-siv = "0.7"
 base64.workspace = true

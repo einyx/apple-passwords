@@ -142,6 +142,80 @@ impl ViewKey {
     }
 }
 
+/// A `Voucher{reason, beneficiary, sponsor}` - the credential a new peer presents to
+/// join the trust circle.
+pub fn encode_voucher(reason: i64, beneficiary: &str, sponsor: &str) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.uint64(1, Some(reason as u64))
+        .string(2, Some(beneficiary))
+        .string(3, Some(sponsor));
+    w.finish()
+}
+
+/// One peer in the trust state.
+#[derive(Debug, Clone, Default)]
+pub struct PeerChange {
+    /// The peer's id.
+    pub hash: String,
+    /// Its permanent info (signed).
+    pub permanent_info: Option<SignedBlob>,
+    /// Its stable info (signed).
+    pub stable_info: Option<SignedBlob>,
+    /// Its dynamic info (signed).
+    pub dynamic_info: Option<SignedBlob>,
+}
+
+/// The trust state: the peers and the sync token.
+#[derive(Debug, Clone, Default)]
+pub struct FetchChanges {
+    pub sync_token: Option<String>,
+    pub peers: Vec<PeerChange>,
+}
+
+/// Parse the answer to `fetchChanges`.
+pub fn parse_fetch_changes_response(raw: &[u8]) -> Result<FetchChanges> {
+    let f = crate::proto::Fields::decode(raw)?;
+    let Some(changes) = f.bytes(1) else {
+        return Ok(FetchChanges::default());
+    };
+    let cf = crate::proto::Fields::decode(changes)?;
+    let mut peers = Vec::new();
+    for change in cf.get_all(2) {
+        let crate::proto::Value::Bytes(bytes) = change else {
+            continue;
+        };
+        let chf = crate::proto::Fields::decode(bytes)?;
+        let Some(peer) = chf.bytes(3) else { continue };
+        let pf = crate::proto::Fields::decode(peer)?;
+        let mut peer_change = PeerChange {
+            hash: pf.string(1).unwrap_or_default(),
+            ..Default::default()
+        };
+        for (num, slot) in [(2u32, 0usize), (3, 1), (4, 2)] {
+            if let Some(blob) = pf.bytes(num) {
+                let signed = SignedBlob::parse(blob)?;
+                match slot {
+                    0 => peer_change.permanent_info = Some(signed),
+                    1 => peer_change.stable_info = Some(signed),
+                    _ => peer_change.dynamic_info = Some(signed),
+                }
+            }
+        }
+        peers.push(peer_change);
+    }
+    Ok(FetchChanges {
+        sync_token: cf.string(1),
+        peers,
+    })
+}
+
+/// The `joinWithVoucher` request: the peer and the restore point.
+pub fn encode_join_with_voucher_request(peer: &[u8], restore_point: Option<&str>) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.string(1, restore_point).message(2, Some(peer));
+    w.finish()
+}
+
 /// The keys of one view.
 #[derive(Debug, Clone, Default)]
 pub struct ViewKeys {

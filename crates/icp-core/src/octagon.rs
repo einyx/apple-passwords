@@ -15,6 +15,18 @@ use crate::proto::{Fields, Value, Writer};
 
 /// The permanentInfo's signature type (domain separation).
 pub const PERMANENT_INFO_SIG_TYPE: &str = "TPPB.PeerPermanentInfo";
+/// The voucher's signature type.
+pub const VOUCHER_SIG_TYPE: &str = "TPPB.Voucher";
+
+/// The prevailing builtin Octagon policy, as declared in the stable info.
+pub const FROZEN_POLICY_VERSION: i64 = 5;
+pub const FROZEN_POLICY_HASH: &str = "SHA256:O/ECQlWhvNlLmlDNh2+nal/yekUC87bXpV3k+6kznSo=";
+pub const FLEXIBLE_POLICY_VERSION: i64 = 20;
+pub const FLEXIBLE_POLICY_HASH: &str = "SHA256:OIzjC3WyLGrM8GAd/EyIfVzTJdYmcGoKPFdQeWeRZTY=";
+/// The OS version the peer claims.
+pub const PEER_OS_VERSION: &str = "macOS 13.4.1 (22F8)";
+/// The model the peer claims.
+pub const PEER_MODEL_ID: &str = "MacBookPro18,3";
 
 /// One P-384 key pair.
 #[derive(Debug, Clone)]
@@ -28,6 +40,13 @@ impl PeerKey {
         PeerKey {
             private_key: SecretKey::random(&mut rand::thread_rng()),
         }
+    }
+
+    /// Rebuild a key from its external representation.
+    pub fn from_x963(blob: &[u8]) -> Result<PeerKey> {
+        Ok(PeerKey {
+            private_key: crypto::load_private_x963(blob)?,
+        })
     }
 
     /// The uncompressed public point (`0x04 || X || Y`).
@@ -202,6 +221,143 @@ pub fn build_permanent_info(
 /// The peer's public encryption key, as Octagon stores it (SPKI DER).
 pub fn public_encryption_key(keys: &PeerKeySet) -> Vec<u8> {
     keys.encryption.public_spki()
+}
+
+/// The stable info: the peer's clock and the prevailing policy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StableInfo {
+    pub data: String,
+    pub sig: String,
+    pub clock: i64,
+}
+
+/// The dynamic info: the peers this one trusts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DynamicInfo {
+    pub data: String,
+    pub sig: String,
+    pub clock: i64,
+    pub included_peer_ids: Vec<String>,
+}
+
+/// The stable info's fields (the `TPPBPeerStableInfo` proto).
+const S_CLOCK: u32 = 1;
+const S_FROZEN_VERSION: u32 = 2;
+const S_FROZEN_HASH: u32 = 3;
+const S_OSVERSION: u32 = 5;
+const S_DEVICENAME: u32 = 6;
+const S_SERIAL: u32 = 9;
+const S_FLEX_VERSION: u32 = 10;
+const S_FLEX_HASH: u32 = 11;
+const S_UCV: u32 = 12;
+
+/// The `TPPBPeerStableInfo` proto.
+#[allow(clippy::too_many_arguments)]
+pub fn serialize_stable_info_data(
+    clock: i64,
+    frozen_policy_version: i64,
+    frozen_policy_hash: &str,
+    flexible_policy_version: i64,
+    flexible_policy_hash: &str,
+    device_name: &str,
+    serial_number: &str,
+    os_version: &str,
+    user_controllable_views: u64,
+) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.uint64(S_CLOCK, Some(clock as u64))
+        .uint64(S_FROZEN_VERSION, Some(frozen_policy_version as u64))
+        .string(S_FROZEN_HASH, Some(frozen_policy_hash))
+        .string(S_OSVERSION, Some(os_version))
+        .string(S_DEVICENAME, Some(device_name))
+        .string(S_SERIAL, Some(serial_number))
+        .uint64(S_FLEX_VERSION, Some(flexible_policy_version as u64))
+        .string(S_FLEX_HASH, Some(flexible_policy_hash))
+        .uint64(S_UCV, Some(user_controllable_views));
+    w.finish()
+}
+
+/// The user-controllable-views status.
+pub const UCV_FOLLOWING: u64 = 1;
+
+/// Build and sign the stable info.
+#[allow(clippy::too_many_arguments)]
+pub fn build_stable_info(
+    keys: &PeerKeySet,
+    clock: i64,
+    frozen_policy_version: i64,
+    frozen_policy_hash: &str,
+    flexible_policy_version: i64,
+    flexible_policy_hash: &str,
+    device_name: &str,
+    serial_number: &str,
+    os_version: &str,
+    user_controllable_views: u64,
+) -> Result<StableInfo> {
+    let data = serialize_stable_info_data(
+        clock,
+        frozen_policy_version,
+        frozen_policy_hash,
+        flexible_policy_version,
+        flexible_policy_hash,
+        device_name,
+        serial_number,
+        os_version,
+        user_controllable_views,
+    );
+    let sig = keys
+        .signing
+        .sign_sha384(&prefixed_data(&data, "TPPB.PeerStableInfo"))?;
+    Ok(StableInfo {
+        data: hex::encode(&data),
+        sig: hex::encode(&sig),
+        clock,
+    })
+}
+
+/// The dynamic info's fields (the `TPPBPeerDynamicInfo` proto).
+const D_CLOCK: u32 = 1;
+const D_INCLUDED: u32 = 2;
+const D_EXCLUDED: u32 = 3;
+const D_PREAPPROVALS: u32 = 5;
+
+/// The `TPPBPeerDynamicInfo` proto.
+pub fn serialize_dynamic_info_data(
+    clock: i64,
+    included_peer_ids: &[String],
+    excluded_peer_ids: &[String],
+    preapprovals: &[String],
+) -> Vec<u8> {
+    let mut w = Writer::new();
+    w.uint64(D_CLOCK, Some(clock as u64));
+    for id in included_peer_ids {
+        w.string(D_INCLUDED, Some(id));
+    }
+    for id in excluded_peer_ids {
+        w.string(D_EXCLUDED, Some(id));
+    }
+    for h in preapprovals {
+        w.string(D_PREAPPROVALS, Some(h));
+    }
+    w.finish()
+}
+
+/// Build and sign the dynamic info.
+pub fn build_dynamic_info(
+    keys: &PeerKeySet,
+    clock: i64,
+    included_peer_ids: &[String],
+) -> Result<DynamicInfo> {
+    let data = serialize_dynamic_info_data(clock, included_peer_ids, &[], &[]);
+    let sig = keys
+        .signing
+        .sign_sha384(&prefixed_data(&data, "TPPB.PeerDynamicInfo"))?;
+    Ok(DynamicInfo {
+        data: hex::encode(&data),
+        sig: hex::encode(&sig),
+        clock,
+        included_peer_ids: included_peer_ids.to_vec(),
+    })
 }
 
 /// The peerID of a stored permanentInfo.

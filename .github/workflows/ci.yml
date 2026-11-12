@@ -49,11 +49,11 @@ jobs:
           flatpak remote-add --user --if-not-exists flathub \
             https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub \
-            org.gnome.Platform//49 \
-            org.gnome.Sdk//49 \
-            org.freedesktop.Sdk.Extension.rust-stable//25.08
-          flatpak-builder --user --install --force-clean --disable-roofs-fuse \
-            --repo=flatpak-repo packaging/org.icp.passwords.yml
+            org.freedesktop.Platform//26.08 \
+            org.freedesktop.Sdk//26.08 \
+            org.freedesktop.Sdk.Extension.rust-stable//26.08
+          flatpak-builder --user --install --force-clean \
+            --repo=flatpak-repo packaging/org.icp.passwords.json
           flatpak build-bundle flatpak-repo build.flatpak org.icp.passwords
       - uses: actions/upload-artifact@v4
         with:

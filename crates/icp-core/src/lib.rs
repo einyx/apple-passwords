@@ -14,8 +14,10 @@ pub mod cuttlefish;
 pub mod device;
 pub mod engine;
 pub mod error;
+pub mod escrow;
 pub mod gsa;
 pub mod icloud;
+pub mod join;
 pub mod keychain;
 pub mod login;
 pub mod nska;
@@ -28,6 +30,24 @@ pub mod vault;
 pub mod write;
 
 pub use error::{Error, Result};
+
+/// A random UUID in Apple's upper-case form.
+pub fn uuid_upper() -> String {
+    let mut bytes = [0u8; 16];
+    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex = hex::encode(bytes);
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    )
+    .to_uppercase()
+}
 
 /// Turn a header map into the HTTP one, skipping what cannot be a header value.
 pub fn header_map(

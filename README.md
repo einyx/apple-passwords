@@ -18,14 +18,35 @@ The protocol was reverse-engineered from the wire; the findings are written up i
 | The desktop app | working (GTK4 + libadwaita) |
 | Sign in | not yet - the app reads an existing session (see below) |
 
-## Building
+## Installing
+
+The releases carry a `.deb`, an `.rpm`, a Flatpak and the plain binaries, for
+x86-64 and aarch64:
+
+```sh
+# Debian, Ubuntu
+sudo apt install ./apple-passwords_0.1.0_amd64.deb
+
+# Fedora, RHEL
+sudo dnf install ./apple-passwords-0.1.0-1.x86_64.rpm
+
+# Flatpak
+flatpak install --user ./build.flatpak
+
+# The binaries
+tar xf apple-passwords_0.1.0_x86_64.tar.gz
+```
+
+The app needs an anisette server (the local one on `http://127.0.0.1:6969`) and a
+signed-in session.
+
+## Building from source
 
 ```sh
 cargo build --release
 ```
 
-The app needs the GTK4 development files (`libgtk-4-dev`, `libadwaita-1-dev`) and a
-running anisette server (the local one on `http://127.0.0.1:6969`).
+The GTK4 development files (`libgtk-4-dev`, `libadwaita-1-dev`) are needed.
 
 ## Using it
 
